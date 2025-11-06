@@ -1,131 +1,99 @@
-🏋️ EvoFit - Gerenciador de Treinos e Progressão de Carga
+# 🏋️ EvoFit - Gerenciador de Treinos e Progressão de Carga
 
-O EvoFit é um aplicativo móvel desenvolvido em React Native (usando Expo e Expo Router) que permite aos usuários gerenciar suas fichas de treino, registrar a progressão de carga (peso e repetições) diariamente e visualizar o histórico de evolução em gráficos.
+[![React Native](https://img.shields.io/badge/React%20Native-61DAFB?style=for-the-badge&logo=react&logoColor=white)](https://reactnative.dev/)
+[![Expo](https://img.shields.io/badge/Expo-1B1F22?style=for-the-badge&logo=expo&logoColor=white)](https://expo.dev/)
+[![Firebase](https://img.shields.io/badge/Firebase-FFCA28?style=for-the-badge&logo=firebase&logoColor=black)](https://firebase.google.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
 
-✨ Funcionalidades
+## 🌟 Sobre o Projeto
 
-Autenticação: Login e Cadastro com Email e Senha (Firebase Auth).
+O **EvoFit** é um aplicativo móvel cross-platform desenvolvido em **React Native** (utilizando **Expo** e **Expo Router**) que tem como objetivo ser um assistente pessoal para o gerenciamento de treinos de força. Ele permite que os usuários criem e gerenciem suas fichas de treino, registrem a progressão de carga (peso e repetições) diariamente e visualizem seu histórico de evolução de forma clara através de gráficos de linha.
 
-Gerenciamento de Fichas: CRUD (Criar, Ler, Deletar) de fichas de treino.
+## ✨ Funcionalidades Principais
 
-Registro de Exercícios: CRUD de exercícios dentro de cada ficha.
+* **🔑 Autenticação Segura:** Login e Cadastro com Email e Senha (Firebase Auth).
+* **📋 Gerenciamento de Fichas:** Sistema CRUD completo para criar, ler e organizar suas rotinas de treino.
+* **📝 Registro Detalhado:** Marque exercícios concluídos no dia e registre o peso/repetições em um modal dedicado.
+* **📈 Visualização de Progresso:** Gráficos de linha interativos que mostram a evolução da carga ao longo do tempo por exercício.
+* **💾 Backup & Restauração:** Funcionalidades de Exportação e Importação de todo o banco de dados do treino via arquivo JSON.
+* **🗓️ Treino do Dia:** Aba dedicada para focar na rotina selecionada e acompanhar o progresso atual.
 
-Marcação Diária: Botão de "Check" para marcar exercícios concluídos no dia.
+## 🛠️ Tecnologias Utilizadas
 
-Progressão: Registro de Peso e Repetições em um modal dedicado.
+| Categoria | Tecnologia | Descrição |
+| :--- | :--- | :--- |
+| **Framework** | **React Native** | Para o desenvolvimento da interface mobile. |
+| **Ambiente** | **Expo** (com **Expo Router**) | Simplifica o desenvolvimento e gerencia a navegação baseada em arquivos. |
+| **Banco de Dados** | **Google Firestore** | Utilizado como o banco de dados em tempo real para armazenar dados de rotinas e logs. |
+| **Autenticação** | **Firebase Auth** | Gerencia o sistema de login e cadastro (Email/Senha). |
+| **Gráficos** | `react-native-gifted-charts` | Componentes prontos para exibir a progressão de carga. |
+| **Fontes** | `@expo-google-fonts/inter` | Utilização de fontes modernas para um design limpo. |
 
-Visualização de Dados: Gráficos de linha que mostram a evolução da carga ao longo do tempo.
+## 🚀 Como Rodar o Projeto
 
-Backup: Exportação e Importação de todo o banco de dados do treino via arquivo JSON.
+### 1. Pré-requisitos
 
-Treino do Dia: Aba dedicada para selecionar uma ficha e ver o progresso atual.
+* [Node.js](https://nodejs.org/) e npm (ou yarn) instalados.
+* [Expo CLI](https://docs.expo.dev/workflow/expo-cli/) instalado globalmente (opcional: `npm install -g expo-cli`).
+* Conta e projeto configurado no [Google Firebase](https://firebase.google.com/).
 
-🛠️ Tecnologias Utilizadas
+### 2. Configuração Local
 
-Framework: React Native
+1.  **Clone o repositório:**
+    ```bash
+    git clone [URL_DO_SEU_REPOSITORIO]
+    cd EvoFit
+    ```
 
-Ambiente: Expo (com Expo Router para navegação baseada em arquivos)
+2.  **Instale as dependências:**
+    ```bash
+    npm install
+    # OU
+    yarn install
+    ```
 
-Banco de Dados: Google Firestore (Realtime Database)
+3.  **Instale as dependências do Expo:**
+    ```bash
+    npx expo install firebase @react-native-async-storage/async-storage @react-native-picker/picker @expo-google-fonts/inter react-native-gesture-handler @expo/vector-icons react-native-svg react-native-gifted-charts expo-linear-gradient expo-document-picker expo-sharing expo-file-system
+    ```
 
-Autenticação: Firebase Authentication (Email/Senha)
+### 3. Configuração do Firebase
 
-Gráficos: react-native-gifted-charts e react-native-svg
+Este projeto é totalmente dependente do Google Firestore para persistência de dados.
 
-Fontes: @expo-google-fonts/inter
+1.  **Configure o Projeto no Console do Firebase:**
+    * Crie um Projeto e adicione um aplicativo web.
+    * Ative o **Cloud Firestore** em modo de teste (ou configure regras de segurança adequadas).
+    * Ative a **Autenticação** por **Email/Senha**.
+    * Obtenha o objeto de configuração (`firebaseConfig`).
 
-🚀 Como Rodar o Projeto
+2.  **Atualize o Arquivo de Configuração:**
+    * Abra o arquivo `firebaseConfig.ts` na raiz do projeto.
+    * Substitua o objeto de configuração com as suas credenciais reais do Firebase:
+    
+    ```typescript
+    // firebaseConfig.ts
+    const firebaseConfig = {
+      apiKey: "SUA_API_KEY",
+      authDomain: "SEU_AUTH_DOMAIN",
+      projectId: "SEU_PROJECT_ID",
+      storageBucket: "SEU_STORAGE_BUCKET",
+      messagingSenderId: "SEU_MESSAGING_SENDER_ID",
+      appId: "SEU_APP_ID"
+    };
+    ```
 
-1. Pré-requisitos
+### 4. Executando o App
 
-Node.js e npm (ou yarn) instalados.
+Inicie o servidor de desenvolvimento do Expo:
 
-Expo CLI instalado globalmente (opcional, mas recomendado).
-
-Conta no Firebase.
-
-2. Configuração Local
-
-Clone o repositório:
-
-git clone [URL_DO_SEU_REPOSITORIO]
-cd EvoFit
-
-
-Instale as dependências:
-
-npm install
-# OU
-yarn install
-
-
-Instale as dependências do Expo que podem ter sido omitidas:
-
-npx expo install firebase @react-native-async-storage/async-storage @react-native-picker/picker @expo-google-fonts/inter react-native-gesture-handler @expo/vector-icons react-native-svg react-native-gifted-charts expo-linear-gradient expo-document-picker expo-sharing expo-file-system
-
-
-3. Configuração do Firebase e Firestore
-
-Este projeto depende do Google Firestore. É obrigatório configurar os seguintes passos:
-
-Crie um Projeto Firebase (Ex: evofit-app-d2e47).
-
-Ative a Autenticação por Email/Senha:
-
-No console do Firebase, vá em Authentication -> Sign-in method -> Ative Email/Senha.
-
-Ative a API do Firestore:
-
-No console do Firebase, vá em Cloud Firestore -> Criar Banco de Dados (escolha Modo de Teste).
-
-Se a API do Firestore não estiver ativa, clique no link de ativação no Google Cloud Console.
-
-Obtenha as Credenciais Web:
-
-Em Configurações do Projeto (⚙️) -> Seus apps -> Clique no ícone de App da Web (</>).
-
-Copie o objeto firebaseConfig.
-
-4. Configuração do Arquivo firebaseConfig.ts
-
-Abra o arquivo firebaseConfig.ts na raiz do projeto e substitua o objeto firebaseConfig com as suas credenciais reais.
-
-// Exemplo (Use suas credenciais reais):
-const firebaseConfig = {
-  apiKey: "SUA_API_KEY",
-  authDomain: "SEU_AUTH_DOMAIN",
-  projectId: "SEU_PROJECT_ID",
-  // ...
-};
-
-
-5. Executando o App
-
-Inicie o servidor Expo (use --clear para garantir que o cache do Metro seja limpo após a instalação):
-
+```bash
 npx expo start --clear
+```
+## 🤝 Contribuições
+Contribuições, issues e sugestões são bem-vindas! Sinta-se à vontade para abrir uma issue ou enviar um Pull Request para ajudar a melhorar o EvoFit.
 
+## 👨‍💻 Desenvolvedor
+Desenvolvido por Mayck Eduardo (Estudante de Engenharia da Computação).
 
-Use o aplicativo Expo Go no seu dispositivo móvel para escanear o QR code.
-
-💾 Estrutura do Banco de Dados (Firestore)
-
-A estrutura do Firestore segue o modelo de escopo por usuário e por aplicação:
-
-/artifacts
-  /default-app-id 
-    /users
-      /{userId} (UID da conta logada)
-        /routines (Coleção de Fichas: Ex: Segunda, Terça)
-          /{routineId}
-            /exercises (Coleção de Exercícios)
-              /{exerciseId}
-                /logs (Coleção de Registros de Carga/Progresso)
-                  /{logId} (Documento: {weight: 80, reps: 10, createdAt: timestamp})
-
-
-👨‍💻 Contato
-
-Desenvolvido por [Seu Nome/GitHub User] (Estudante de Engenharia da Computação).
-
-Fique à vontade para contribuir e melhorar!
+GitHub: https://github.com/mayck-eduardo
