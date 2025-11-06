@@ -1,5 +1,5 @@
+import { Inter_400Regular, Inter_700Bold, useFonts } from '@expo-google-fonts/inter';
 import { Stack } from 'expo-router';
-import { useFonts, Inter_400Regular, Inter_700Bold } from '@expo-google-fonts/inter';
 import { ActivityIndicator } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 

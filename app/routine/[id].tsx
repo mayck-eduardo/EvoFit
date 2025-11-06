@@ -1,38 +1,38 @@
-import React, { useState, useEffect } from 'react';
+import { Link, Stack, useLocalSearchParams, useNavigation } from 'expo-router';
+import React, { useEffect, useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
   ActivityIndicator,
-  TouchableOpacity,
-  Modal,
-  TextInput,
-  Button,
   Alert,
+  Button,
+  FlatList,
   KeyboardAvoidingView,
+  Modal,
   Platform,
-  Pressable, 
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import { useLocalSearchParams, Stack, Link, useNavigation } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 // 1. Importações RE-ADICIONADAS
-import {
-  collection,
-  onSnapshot,
-  query,
-  doc,
-  addDoc,
-  serverTimestamp,
-  getDocs,
-  orderBy,
-  limit,
-  deleteDoc, 
-  writeBatch,
-  updateDoc // 2. IMPORTAR 'updateDoc' para o check
-} from 'firebase/firestore';
-import { db, auth, appId } from '../../firebaseConfig';
 import { FontAwesome } from '@expo/vector-icons'; // RE-ADICIONADO
+import {
+  addDoc,
+  collection,
+  doc,
+  getDocs,
+  limit,
+  onSnapshot,
+  orderBy,
+  query,
+  serverTimestamp,
+  updateDoc // 2. IMPORTAR 'updateDoc' para o check
+  ,
+  writeBatch
+} from 'firebase/firestore';
+import { appId, auth, db } from '../../firebaseConfig';
 
 // 3. NOVO CAMPO 'lastCompleted'
 interface Exercise {
@@ -424,7 +424,7 @@ export default function RoutineScreen() {
                 </View>
                 
                 {/* Botão Deletar (RE-ADICIONADO) */}
-                <TouchableOpacity 
+                {/*<TouchableOpacity 
                   style={styles.deleteButton} 
                   onPress={() => handleDeleteExercise(item.id)}
                   disabled={actionLoading === item.id} 
@@ -433,7 +433,7 @@ export default function RoutineScreen() {
                     <ActivityIndicator size="small" color="#FF4500" /> :
                     <FontAwesome name="trash" size={24} color="#FF4500" />
                   }
-                </TouchableOpacity>
+                </TouchableOpacity>*/}
               </View>
             )
           }}

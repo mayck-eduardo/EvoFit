@@ -44,6 +44,15 @@ export default function TabLayout() {
           ),
         }}
       />
+      <Tabs.Screen
+        name="frequencia" // Nome do novo arquivo: edit.tsx
+        options={{
+          title: 'Frequencia',
+          tabBarIcon: ({ color }) => (
+            <FontAwesome name="calendar" size={24} color={color} />
+          ),
+        }}
+      />
     </Tabs>
   );
 }
