@@ -41,7 +41,7 @@ O **EvoFit** é um aplicativo móvel cross-platform desenvolvido em **React Nati
 
 1.  **Clone o repositório:**
     ```bash
-    git clone [URL_DO_SEU_REPOSITORIO]
+    git clone (https://github.com/mayck-eduardo/EvoFit)
     cd EvoFit
     ```
 
