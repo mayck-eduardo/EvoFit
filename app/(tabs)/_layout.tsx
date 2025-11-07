@@ -11,48 +11,55 @@ export default function TabLayout() {
         tabBarInactiveTintColor: '#8E8E93', 
         tabBarStyle: {
           backgroundColor: '#1E1E1E', 
-          borderTopColor: '#333',
+          borderTopColor: '#3A3A3A', 
         },
-      }}>
-      {/* 1. Tela de Fichas (existente) */}
+        tabBarLabelStyle: {
+          fontSize: 12,
+          fontWeight: '600',
+        }
+      }}
+    >
       <Tabs.Screen
-        name="index"
+        name="workout" // TELA INICIAL
         options={{
-          title: 'Fichas',
-          tabBarIcon: ({ color }) => (
-            <FontAwesome name="list-alt" size={24} color={color} />
+          title: 'Treino do Dia', 
+          tabBarIcon: ({ color, size }) => (
+            <FontAwesome name="play-circle" size={size} color={color} /> 
           ),
         }}
       />
-      {/* 2. Tela de Treino do Dia (existente) */}
+      
       <Tabs.Screen
-        name="workout" 
+        name="edit" // Renomeada para "Fichas"
         options={{
-          title: 'Treino do Dia',
-          tabBarIcon: ({ color }) => (
-            <FontAwesome name="clipboard" size={24} color={color} />
+          title: 'Fichas', 
+          tabBarIcon: ({ color, size }) => (
+            <FontAwesome name="list-alt" size={size} color={color} /> 
           ),
         }}
       />
-      {/* 3. NOVA Tela de Edição */}
+
       <Tabs.Screen
-        name="edit" // Nome do novo arquivo: edit.tsx
+        name="calendar" // Calendário
         options={{
-          title: 'Editar',
-          tabBarIcon: ({ color }) => (
-            <FontAwesome name="pencil" size={24} color={color} />
+          title: 'Calendário', 
+          tabBarIcon: ({ color, size }) => (
+            <FontAwesome name="calendar" size={size} color={color} /> 
           ),
         }}
       />
+      
+      {/* 1. NOVA TELA DE CONFIGURAÇÕES */}
       <Tabs.Screen
-        name="frequencia" // Nome do novo arquivo: edit.tsx
+        name="settings" // O novo arquivo settings.tsx
         options={{
-          title: 'Frequencia',
-          tabBarIcon: ({ color }) => (
-            <FontAwesome name="calendar" size={24} color={color} />
+          title: 'Config.', 
+          tabBarIcon: ({ color, size }) => (
+            <FontAwesome name="cog" size={size} color={color} /> 
           ),
         }}
       />
+      
     </Tabs>
   );
 }

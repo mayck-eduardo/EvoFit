@@ -1,11 +1,11 @@
-import { initializeApp, getApp, getApps } from 'firebase/app';
+import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';
+import { getApp, getApps, initializeApp } from 'firebase/app';
 import {
-  initializeAuth,
   getAuth,
   getReactNativePersistence,
+  initializeAuth,
 } from 'firebase/auth';
-import { getFirestore, setLogLevel } from 'firebase/firestore';
-import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';
+import { getFirestore } from 'firebase/firestore';
 
 // 1. SUAS CHAVES REAIS
 const firebaseConfig = {
@@ -18,27 +18,30 @@ const firebaseConfig = {
   measurementId: "G-ZKJVZ1X7K2"
 };
 
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-const fbConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : firebaseConfig;
+let app;
+let auth;
+let db;
 
-// 2. Inicialização Singleton (Padrão)
-const app = !getApps().length ? initializeApp(fbConfig) : getApp();
-
-let auth: ReturnType<typeof getAuth>;
-try {
-  auth = initializeAuth(app, {
-    persistence: getReactNativePersistence(ReactNativeAsyncStorage)
-  });
-} catch (error: any) {
-  if (error.code === 'auth/already-initialized') {
-    auth = getAuth(app);
-  } else {
-    console.error("Erro ao inicializar Auth:", error);
-    throw error;
+// 2. Previne re-inicialização (Singleton)
+if (!getApps().length) {
+  try {
+    app = initializeApp(firebaseConfig);
+    // 3. Configura o Auth para persistir o login no celular
+    auth = initializeAuth(app, {
+      persistence: getReactNativePersistence(ReactNativeAsyncStorage),
+    });
+    db = getFirestore(app);
+    // setLogLevel('debug'); // Descomente para debug do Firestore
+  } catch (error) {
+    console.error("Erro ao inicializar Firebase: ", error);
   }
+} else {
+  app = getApp();
+  auth = getAuth(app);
+  db = getFirestore(app);
 }
 
-const db = getFirestore(app);
-setLogLevel('debug');
+// 4. Define o appId (default-app-id ou o ID real do app)
+const appId = firebaseConfig.appId || 'default-app-id';
 
-export { db, auth, appId };
+export { app, appId, auth, db };

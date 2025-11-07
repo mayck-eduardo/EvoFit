@@ -1,35 +1,39 @@
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  TouchableOpacity,
-  ActivityIndicator,
-  TextInput,
-  Alert,
-  Pressable,
-  Modal, 
-  KeyboardAvoidingView,
-  Platform
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-// 1. Importações completas do Firestore
-import { 
-  collection, 
-  onSnapshot, 
-  query, 
-  addDoc, 
-  serverTimestamp,
-  getDocs,
-  deleteDoc, 
-  writeBatch, 
-  doc,
-  orderBy
-} from 'firebase/firestore'; 
-import { db, auth, appId } from '../../firebaseConfig';
+import { FontAwesome } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { User, onAuthStateChanged } from 'firebase/auth';
-import { FontAwesome } from '@expo/vector-icons'; 
+import {
+  addDoc,
+  collection,
+  doc,
+  getDocs,
+  onSnapshot,
+  orderBy,
+  query,
+  serverTimestamp,
+  updateDoc,
+  writeBatch
+} from 'firebase/firestore';
+import React, { useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
+} from 'react-native';
+import DraggableFlatList from 'react-native-draggable-flatlist';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { appId, auth, db } from '../../firebaseConfig';
+
+
+
+// Imports de Backup/Import FORAM REMOVIDOS
 
 export interface Routine {
   id: string;
@@ -37,7 +41,6 @@ export interface Routine {
   createdAt?: { seconds: number };
 }
 
-// 2. Este é um novo componente
 export default function EditScreen() {
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [loading, setLoading] = useState(true);
@@ -47,8 +50,11 @@ export default function EditScreen() {
   const [routineModalVisible, setRoutineModalVisible] = useState(false);
   const [newRoutineName, setNewRoutineName] = useState('');
   const [saveLoading, setSaveLoading] = useState(false); 
-
-  const [actionLoading, setActionLoading] = useState<string | null>(null); // 'string' para saber qual item está carregando
+  
+  const [editingRoutine, setEditingRoutine] = useState<Routine | null>(null);
+  const [actionLoading, setActionLoading] = useState<string | null>(null); 
+  
+  const router = useRouter(); 
 
   // useEffect de auth
   useEffect(() => {
@@ -59,7 +65,7 @@ export default function EditScreen() {
     return () => unsubscribeAuth();
   }, []);
 
-  // useEffect de buscar dados (ordenado)
+  // useEffect de buscar dados
   useEffect(() => {
     if (!user) {
       setRoutines([]);
@@ -68,7 +74,7 @@ export default function EditScreen() {
     setLoading(true);
     const userId = user.uid;
     const userRoutinesCollection = collection(db, 'artifacts', appId, 'users', userId, 'routines');
-    const q = query(userRoutinesCollection, orderBy("createdAt", "asc"));
+    const q = query(userRoutinesCollection, orderBy("order", "asc"));
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const routinesData: Routine[] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Routine));
@@ -81,7 +87,19 @@ export default function EditScreen() {
     return () => unsubscribe();
   }, [user]);
 
-  // Salvar Nova Ficha
+  // ... (Funções de CRUD de Fichas não mudam) ...
+  const openAddModal = () => {
+    setEditingRoutine(null);
+    setNewRoutineName('');
+    setRoutineModalVisible(true);
+  };
+
+  const openEditModal = (routine: Routine) => {
+    setEditingRoutine(routine);
+    setNewRoutineName(routine.name);
+    setRoutineModalVisible(true);
+  };
+
   const handleSaveRoutine = async () => {
     if (!user || !newRoutineName) {
       Alert.alert("Erro", "Digite um nome para a ficha.");
@@ -92,13 +110,22 @@ export default function EditScreen() {
       const userId = user.uid;
       const routinesCollection = collection(db, 'artifacts', appId, 'users', userId, 'routines');
       
-      await addDoc(routinesCollection, {
-        name: newRoutineName,
-        createdAt: serverTimestamp() 
-      });
+      if (editingRoutine) {
+        const routineRef = doc(db, routinesCollection.path, editingRoutine.id);
+        await updateDoc(routineRef, {
+          name: newRoutineName
+        });
+      } else {
+        await addDoc(routinesCollection, {
+          name: newRoutineName,
+          createdAt: serverTimestamp(),
+          order: routines.length
+        });
+      }
       
       setNewRoutineName('');
       setRoutineModalVisible(false);
+      setEditingRoutine(null);
     } catch (error) {
       console.error("Erro ao salvar ficha: ", error);
       Alert.alert("Erro", "Não foi possível salvar a ficha.");
@@ -106,7 +133,6 @@ export default function EditScreen() {
     setSaveLoading(false);
   };
 
-  // Deletar Ficha
   const handleDeleteRoutine = (routineId: string) => {
     if (!user) return;
     
@@ -119,7 +145,7 @@ export default function EditScreen() {
           text: "Deletar", 
           style: "destructive",
           onPress: async () => {
-            setActionLoading(routineId); // Ativa o loading para este item
+            setActionLoading(routineId); 
             try {
               const userId = user.uid;
               const routineRef = doc(db, 'artifacts', appId, 'users', userId, 'routines', routineId);
@@ -144,16 +170,49 @@ export default function EditScreen() {
               console.error("Erro ao deletar ficha: ", error);
               Alert.alert("Erro", "Não foi possível deletar a ficha.");
             }
-            setActionLoading(null); // Desativa o loading
+            setActionLoading(null); 
           }
         }
       ]
     );
   };
 
+  const handleDragEnd = async ({ data }: { data: Routine[] }) => {
+  if (!user) return;
+  // 1. Atualiza o estado local para a UI ficar instantânea
+  setRoutines(data); 
+
+  // 2. Prepara um "lote" de escritas no Firestore
+  const batch = writeBatch(db);
+  const userId = user.uid;
+
+  // 3. Para cada item na nova ordem, atualiza o campo "order" no Firestore
+  data.forEach((routine, index) => {
+    const routineRef = doc(db, 'artifacts', appId, 'users', userId, 'routines', routine.id);
+    batch.update(routineRef, { order: index });
+  });
+
+  // 4. Executa todas as atualizações de uma vez
+  try {
+    await batch.commit();
+  } catch (error) {
+    console.error("Erro ao reordenar fichas: ", error);
+    Alert.alert("Erro", "Não foi possível salvar a nova ordem.");
+  }
+};
+
+  const navigateToManageExercises = (routine: Routine) => {
+    router.push({
+      pathname: `/routine/${routine.id}`,
+      params: { name: routine.name },
+    });
+  };
+
+  // Funções de Backup/Import FORAM REMOVIDAS
+
   // ----- RENDERIZAÇÃO -----
 
-  if (loading) {
+  if (loading && !user) {
     return (
       <SafeAreaView style={styles.container}>
         <ActivityIndicator size="large" color="#FFFFFF" style={{ flex: 1 }} />
@@ -161,18 +220,16 @@ export default function EditScreen() {
     );
   }
 
-  // Se não estiver logado
   if (!user) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.content}>
-          <Text style={styles.emptyText}>Faça login na aba "Fichas" para editar seus treinos.</Text>
+          <Text style={styles.emptyText}>Faça login para gerenciar suas fichas.</Text>
         </View>
       </SafeAreaView>
     );
   }
 
-  // Tela de Edição (Logado)
   return (
     <SafeAreaView style={styles.container}>
       <Modal
@@ -186,7 +243,7 @@ export default function EditScreen() {
           style={styles.modalOverlay}
         >
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Nova Ficha</Text>
+            <Text style={styles.modalTitle}>{editingRoutine ? "Editar Ficha" : "Nova Ficha"}</Text>
             <TextInput
               style={styles.input}
               placeholder="Ex: Segunda: Peito/Tríceps"
@@ -211,24 +268,38 @@ export default function EditScreen() {
       </Modal>
 
       <View style={styles.header}>
-        <Text style={styles.title}>Editar Fichas</Text>
-        <Text style={styles.subtitle}>Adicione ou remova suas fichas de treino.</Text>
+        <Text style={styles.title}>Fichas</Text>
+        {/* Botões de Importar/Exportar FORAM REMOVIDOS do header */}
+        <Text style={styles.subtitle}>Clique em uma ficha para gerenciar seus exercícios.</Text>
       </View>
 
-      <FlatList
+      <DraggableFlatList
         data={routines}
         keyExtractor={(item) => item.id}
+        onDragEnd={handleDragEnd} 
+        style={styles.cardContainerPai}
         renderItem={({ item }) => (
           <View style={styles.cardContainer}>
-            {/* O card não é mais um link aqui */}
-            <View style={styles.card}>
+            <TouchableOpacity 
+              style={styles.card} 
+              onPress={() => navigateToManageExercises(item)}
+            >
               <Text style={styles.cardText}>{item.name}</Text>
-            </View>
+              <Text style={styles.cardSubtext}>Gerenciar Exercícios →</Text>
+            </TouchableOpacity>
             
             <TouchableOpacity 
-              style={styles.deleteButton} 
+              style={styles.iconButton} 
+              onPress={() => openEditModal(item)}
+              disabled={actionLoading === item.id}
+            >
+              <FontAwesome name="pencil" size={24} color="#007AFF" /> 
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.iconButton} 
               onPress={() => handleDeleteRoutine(item.id)}
-              disabled={actionLoading === item.id} // Desativa o botão específico
+              disabled={actionLoading === item.id} 
             >
               {actionLoading === item.id ? (
                 <ActivityIndicator size="small" color="#FF4500" />
@@ -248,15 +319,17 @@ export default function EditScreen() {
 
       <TouchableOpacity
         style={styles.fab}
-        onPress={() => setRoutineModalVisible(true)}
+        onPress={openAddModal}
       >
         <Text style={styles.fabText}>+</Text>
       </TouchableOpacity>
     </SafeAreaView>
   );
+
+  
 }
 
-// Estilos (copiados de 'index.tsx' e adaptados)
+// Estilos
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -288,6 +361,18 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#333',
   },
+  headerActions: { // Estilo não é mais usado, mas pode ficar
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    position: 'absolute',
+    right: 20,
+    top: 25,
+  },
+  actionButton: { // Estilo não é mais usado, mas pode ficar
+    marginLeft: 20,
+    padding: 5,
+  },
   title: {
     fontSize: 32,
     fontWeight: 'bold',
@@ -304,22 +389,30 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     marginTop: 10,
   },
+  cardContainerPai:{
+    marginBottom: 100,
+  },
   card: {
     backgroundColor: '#1E1E1E',
     padding: 24,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#333',
-    flex: 1, // Ocupa o espaço
+    flex: 1, 
   },
   cardText: {
     fontSize: 18,
     fontWeight: '500',
     color: '#FFFFFF',
   },
-  deleteButton: {
-    padding: 20, 
-    width: 60, // Largura fixa para o loading não pular a tela
+  cardSubtext: {
+    fontSize: 14,
+    color: '#007AFF',
+    marginTop: 5,
+  },
+  iconButton: {
+    padding: 15, 
+    width: 60, 
     alignItems: 'center'
   },
   emptyText: {

@@ -1,24 +1,22 @@
-import React, { useEffect, useState } from 'react';
-import {
-    ActivityIndicator,
-    Alert,
-    StyleSheet,
-    Text,
-    View
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-// 1. Imports necessários para ESCRITA
 import { onAuthStateChanged, User } from 'firebase/auth';
 import {
-    collection,
-    deleteField // Para remover o timestamp
-    ,
-    doc,
-    getDocs,
-    query,
-    updateDoc
+  collection,
+  deleteField,
+  doc,
+  getDocs,
+  query,
+  updateDoc
 } from 'firebase/firestore';
-import { Calendar, DateData, LocaleConfig } from 'react-native-calendars'; // 2. Biblioteca de Calendário
+import React, { useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  StyleSheet,
+  Text,
+  View
+} from 'react-native';
+import { Calendar, DateData, LocaleConfig } from 'react-native-calendars';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { appId, auth, db } from '../../firebaseConfig';
 
 // Configuração de localização para Português Brasil
@@ -67,7 +65,6 @@ export default function CalendarScreen() {
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
-      // Não definimos loading(false) aqui, esperamos o user carregar
     });
     return () => unsubscribeAuth();
   }, []);
@@ -76,7 +73,7 @@ export default function CalendarScreen() {
   useEffect(() => {
     if (!user) {
       setLoading(false);
-      setMarkedDates({}); // Limpa as datas se o usuário fizer logout
+      setMarkedDates({}); 
       return;
     }
 
@@ -132,21 +129,16 @@ export default function CalendarScreen() {
 
     fetchWorkoutDates();
     
-    // NOTA: Este onSnapshot pode ser pesado se houver muitas sub-coleções.
-    // Para um app real, isso seria otimizado com Cloud Functions,
-    // mas para nosso propósito, um refetch no 'user' é suficiente.
-
-  }, [user]); // Re-busca tudo se o usuário mudar
+  }, [user]);
 
   // Handler para Marcar/Desmarcar
   const handleDayPress = async (day: DateData) => {
     const dateString = day.dateString;
-    setSelectedDay(dateString); // Salva o dia clicado temporariamente
+    setSelectedDay(dateString);
 
     const isCurrentlyMarked = !!markedDates[dateString];
 
     if (isCurrentlyMarked) {
-      // Lógica para Desmarcar (Remover o registro do dia)
       Alert.alert(
         "Desmarcar Treino",
         `Deseja remover o(s) registro(s) de treino para ${dateString}?`,
@@ -156,11 +148,10 @@ export default function CalendarScreen() {
         ]
       );
     } else {
-      // Lógica para Marcar
       Alert.alert(
         "Marcar Treino",
         `Para marcar um treino, vá à aba "Treino do Dia" e complete os exercícios.`,
-        [{ text: "OK", onPress: () => setSelectedDay(null) }] // Fecha o alerta
+        [{ text: "OK", onPress: () => setSelectedDay(null) }]
       );
     }
   };
@@ -171,14 +162,13 @@ export default function CalendarScreen() {
     setLoading(true);
     const userId = user.uid;
 
-    // CORREÇÃO: Definir a query de rotinas AQUI
     const routinesQuery = query(
       collection(db, 'artifacts', appId, 'users', userId, 'routines')
     );
 
     try {
       if (!mark) { // DESMARCAR
-        const routinesSnapshot = await getDocs(routinesQuery); // Agora a query existe
+        const routinesSnapshot = await getDocs(routinesQuery);
 
         for (const routineDoc of routinesSnapshot.docs) {
           const routineId = routineDoc.id;
@@ -188,7 +178,6 @@ export default function CalendarScreen() {
           for (const exerciseDoc of exercisesSnapshot.docs) {
             const lastCompleted = exerciseDoc.data().lastCompleted;
             if (lastCompleted && formatDate(lastCompleted) === dateString) {
-              // Limpa o campo no Firestore
               await updateDoc(doc(exercisesRef, exerciseDoc.id), {
                 lastCompleted: deleteField()
               });
@@ -244,7 +233,7 @@ export default function CalendarScreen() {
         <Calendar
           current={new Date().toISOString().split('T')[0]}
           monthFormat={'MMMM yyyy'}
-          onDayPress={handleDayPress} // Usa o novo handler de clique
+          onDayPress={handleDayPress} 
           markedDates={markedDates}
           theme={{
             calendarBackground: '#1E1E1E',

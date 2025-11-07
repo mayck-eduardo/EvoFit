@@ -1,111 +1,150 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, Dimensions } from 'react-native';
-import { useLocalSearchParams, Stack } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { collection, query, getDocs, orderBy } from 'firebase/firestore';
-import { db, auth, appId } from '../../firebaseConfig'; 
+import { Stack, useLocalSearchParams } from 'expo-router';
+import { onAuthStateChanged, User } from 'firebase/auth';
+import { collection, getDocs, orderBy, query } from 'firebase/firestore';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, Dimensions, StyleSheet, Text, View } from 'react-native';
 import { LineChart } from 'react-native-gifted-charts';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { appId, auth, db } from '../../firebaseConfig';
 
 interface Log {
   id: string;
   weight: number;
   reps: number;
-  createdAt: { seconds: number; nanoseconds: number; } | null;
-}
-interface ChartData {
-  value: number; 
-  label: string; 
+  createdAt: { seconds: number };
 }
 
-const { width } = Dimensions.get('window'); 
+// Formato de dado que o gráfico espera
+interface ChartData {
+  value: number;
+  label: string;
+  dataPointText: string;
+}
+
+// Agrupa logs por dia, pegando o maior peso
+const groupLogsByDay = (logs: Log[]): ChartData[] => {
+  const groups: { [key: string]: number } = {}; // Armazena { 'DD/MM': maxWeight }
+
+  logs.forEach(log => {
+    const date = new Date(log.createdAt.seconds * 1000);
+    const day = date.getDate();
+    const month = date.getMonth() + 1;
+    const label = `${day}/${month}`;
+    
+    const currentMaxWeight = groups[label] || 0;
+    if (log.weight > currentMaxWeight) {
+      groups[label] = log.weight;
+    }
+  });
+
+  // Converte o objeto de grupos em array para o gráfico
+  return Object.keys(groups).map(label => ({
+    value: groups[label],
+    label: label,
+    dataPointText: `${groups[label]}kg`,
+  }));
+};
 
 export default function ChartScreen() {
-  const { routineId, exerciseId, name } = useLocalSearchParams<{
-    routineId: string;
-    exerciseId: string;
-    name: string;
-  }>();
+  const params = useLocalSearchParams();
+  const { exerciseId, exerciseName, routineId } = params;
 
-  const [chartData, setChartData] = useState<ChartData[]>([]);
+  const [user, setUser] = useState<User | null>(auth.currentUser);
   const [loading, setLoading] = useState(true);
-  
-  const userId = auth.currentUser?.uid; 
+  const [chartData, setChartData] = useState<ChartData[]>([]);
 
-  const formatDate = (timestamp: Log['createdAt']) => {
-    if (!timestamp) return '...';
-    const date = new Date(timestamp.seconds * 1000);
-    return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-  };
-
+  // Efeito de Auth
   useEffect(() => {
-    if (!userId || !routineId || !exerciseId) {
+    const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+    });
+    return () => unsubscribeAuth();
+  }, []);
+
+  // Efeito para buscar os Logs
+  useEffect(() => {
+    if (!user || !routineId || !exerciseId) {
       setLoading(false);
       return;
     }
+    setLoading(true);
 
     const fetchLogs = async () => {
-      setLoading(true);
-      const logCollection = collection(
-        db, 'artifacts', appId, 'users', userId, 'routines', routineId, 'exercises', exerciseId, 'logs'
-      );
-      const q = query(logCollection, orderBy('createdAt', 'asc'));
-
       try {
-        const querySnapshot = await getDocs(q);
-        const logsData = querySnapshot.docs.map(doc => ({ ...doc.data() } as Log));
+        const logsCollection = collection(db, 'artifacts', appId, 'users', user.uid, 'routines', routineId as string, 'exercises', exerciseId as string, 'logs');
+        const q = query(logsCollection, orderBy('createdAt', 'asc'));
+        
+        const snapshot = await getDocs(q);
+        const logsData: Log[] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Log));
 
-        const dataForChart: ChartData[] = logsData.map(log => ({
-          value: log.weight,
-          label: formatDate(log.createdAt),
-        }));
+        // Aplica a nova lógica de agrupamento
+        const formattedData = groupLogsByDay(logsData);
+        
+        setChartData(formattedData);
 
-        setChartData(dataForChart);
       } catch (error) {
-        console.error("Erro ao buscar logs para o gráfico: ", error);
+        console.error("Erro ao buscar logs para gráfico: ", error);
+        Alert.alert("Erro", "Não foi possível carregar o gráfico.");
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
 
     fetchLogs();
-  }, [userId, routineId, exerciseId]); 
+  }, [user, routineId, exerciseId]);
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <ActivityIndicator size="large" color="#FFFFFF" style={{ flex: 1 }} />
+      </SafeAreaView>
+    );
+  }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <Stack.Screen options={{ title: `Evolução: ${name}` }} />
+    <SafeAreaView style={styles.container} edges={['bottom', 'left', 'right']}>
+      <Stack.Screen options={{ title: exerciseName as string || 'Gráfico' }} />
+      
       <View style={styles.content}>
-        <Text style={styles.header}>Progressão de Carga (kg)</Text>
-        
-        {loading ? (
-          <ActivityIndicator size="large" color="#FFFFFF" style={{ marginTop: 50 }} />
-        ) : chartData.length < 2 ? (
+        <Text style={styles.title}>Evolução de Carga</Text>
+        <Text style={styles.subtitle}>(Peso Máximo por Dia)</Text>
+        <Text style={styles.exerciseName}>{exerciseName}</Text>
+
+        {chartData.length < 2 ? (
           <Text style={styles.emptyText}>
-            Você precisa de pelo menos 2 registros para ver um gráfico.
+            Você precisa de pelo menos 2 registros em dias diferentes para montar um gráfico.
           </Text>
         ) : (
           <View style={styles.chartContainer}>
             <LineChart
               data={chartData}
               height={250}
-              width={width - 80} 
-              color="#007AFF" 
+              width={Dimensions.get('window').width - 80} // Largura da tela - padding
+              
+              // Estilo da Linha
+              color="#007AFF" // Azul
               thickness={3}
+              
+              // Pontos
               dataPointsColor="#FFFFFF"
               dataPointsRadius={5}
-              xAxisLabelTextStyle={styles.axisLabel}
-              xAxisColor="#555"
-              yAxisLabelTextStyle={styles.axisLabel}
-              yAxisColor="#555"
-              yAxisTextStyle={styles.axisLabel}
-              rulesColor="#333"
-              showDataPointOnFocus
-              focusEnabled
+              
+              // Texto no Ponto
               dataPointLabelShiftY={-20}
-              dataPointLabelShiftX={-10}
-              dataPointLabelComponent={(item: ChartData) => (
-                 <View style={styles.tooltip}>
-                   <Text style={styles.tooltipText}>{item.value} kg</Text>
-                 </View>
-              )}
+              dataPointLabelColor="#FFFFFF"
+              
+              // Eixos
+              xAxisColor="#555"
+              yAxisColor="#555"
+              xAxisLabelColor="#999"
+              yAxisLabelColor="#999"
+              
+              // Outros
+              isAnimated
+              curved
+              yAxisOffset={0}
+              startFillColor="rgba(0,122,255,0.2)"
+              endFillColor="rgba(0,122,255,0.01)"
             />
           </View>
         )}
@@ -114,32 +153,41 @@ export default function ChartScreen() {
   );
 }
 
-// Estilos
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#121212',
   },
   content: {
+    flex: 1,
     padding: 20,
     alignItems: 'center',
   },
-  header: {
-    fontSize: 22,
+  title: {
+    fontSize: 28,
     fontWeight: 'bold',
     color: '#FFFFFF',
-    marginBottom: 30,
-    textAlign: 'center',
+    marginBottom: 8,
+  },
+  subtitle: {
+    fontSize: 16,
+    color: '#B0B0B0',
+    marginBottom: 10,
+    fontStyle: 'italic',
+  },
+  exerciseName: {
+    fontSize: 18,
+    color: '#FFFFFF',
+    fontWeight: '600',
+    marginBottom: 40,
   },
   chartContainer: {
     backgroundColor: '#1E1E1E',
+    padding: 20,
     borderRadius: 12,
-    paddingVertical: 20,
-    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: '#333',
     alignItems: 'center',
-  },
-  axisLabel: {
-    color: '#B0B0B0',
   },
   emptyText: {
     color: '#B0B0B0',
@@ -147,13 +195,4 @@ const styles = StyleSheet.create({
     marginTop: 50,
     fontSize: 16,
   },
-  tooltip: {
-    backgroundColor: '#333',
-    padding: 5,
-    borderRadius: 4,
-  },
-  tooltipText: {
-    color: 'white',
-    fontSize: 12,
-  }
 });
