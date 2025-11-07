@@ -20,7 +20,7 @@ export default function TabLayout() {
       }}
     >
       <Tabs.Screen
-        name="workout" // TELA INICIAL
+        name="index" // TELA INICIAL
         options={{
           title: 'Treino do Dia', 
           tabBarIcon: ({ color, size }) => (
