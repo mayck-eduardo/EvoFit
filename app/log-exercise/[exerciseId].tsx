@@ -1,22 +1,5 @@
 // app/log-exercise/[exerciseId].tsx
 
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable // Importar Pressable
-  ,
-
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View
-} from 'react-native';
-// 1. Importar Link
 import { FontAwesome } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Link, Stack, useLocalSearchParams, useNavigation } from 'expo-router';
@@ -31,6 +14,20 @@ import {
   query,
   serverTimestamp
 } from 'firebase/firestore';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { appId, auth, db } from '../../firebaseConfig';
 import { calculateEpley1RM } from '../utils/formulas';
@@ -43,7 +40,6 @@ interface Log {
   createdAt: { seconds: number };
 }
 
-// 2. NOVO TIPO DE DADO para o histórico agrupado
 interface GroupedLog {
   title: string;
   data: Log[];
@@ -65,6 +61,13 @@ const groupLogsByDate = (logs: Log[]): GroupedLog[] => {
   const todayStr = new Date().toDateString();
 
   logs.forEach(log => {
+    // 1. AQUI ESTÁ A CORREÇÃO
+    // Se o timestamp ainda não foi confirmado pelo servidor, pula este log
+    if (!log.createdAt || typeof log.createdAt.seconds !== 'number') {
+      return; 
+    }
+    // FIM DA CORREÇÃO
+
     const date = new Date(log.createdAt.seconds * 1000);
     const dateStr = date.toDateString();
     
@@ -72,7 +75,6 @@ const groupLogsByDate = (logs: Log[]): GroupedLog[] => {
     if (dateStr === todayStr) {
       dayLabel = "Hoje";
     } else {
-      // Formata como DD/MM/YYYY
       dayLabel = date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
     }
 
@@ -82,10 +84,9 @@ const groupLogsByDate = (logs: Log[]): GroupedLog[] => {
     groups[dayLabel].push(log);
   });
   
-  // Converte o objeto em um array ordenado
   return Object.keys(groups).map(day => ({
     title: day,
-    data: groups[day] // Os dados já estão em ordem (desc) do Firestore
+    data: groups[day]
   }));
 };
 
@@ -95,27 +96,21 @@ export default function LogExerciseScreen() {
   const { exerciseId, exerciseName, routineId, exerciseSets } = params;
 
   const [user, setUser] = useState<User | null>(auth.currentUser);
-  
-  // 4. NOVO ESTADO para os logs agrupados
   const [groupedLogs, setGroupedLogs] = useState<GroupedLog[]>([]);
-  
   const [loading, setLoading] = useState(true);
   const [logLoading, setLogLoading] = useState(false); 
 
-  // Estados dos Inputs
   const [weight, setWeight] = useState('');
   const [reps, setReps] = useState('');
   const [note, setNote] = useState(''); 
   const repsInputRef = useRef<TextInput>(null); 
   const noteInputRef = useRef<TextInput>(null); 
 
-  // Estados do Cronômetro
   const [timerDefault, setTimerDefault] = useState(90); 
   const [timeLeft, setTimeLeft] = useState(90);
   const [isTimerActive, setIsTimerActive] = useState(false);
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
   
-  // ... (useEffect de Auth e loadTimerPreference não mudam) ...
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
@@ -139,14 +134,12 @@ export default function LogExerciseScreen() {
     }
   };
 
-  // Efeito para Título da Página
   useLayoutEffect(() => {
     navigation.setOptions({
       headerTitle: (exerciseName as string) || "Registrar Treino",
     });
   }, [navigation, exerciseName]);
 
-  // Efeito para buscar os logs
   useEffect(() => {
     if (!user || !routineId || !exerciseId) {
       setLoading(false);
@@ -154,15 +147,13 @@ export default function LogExerciseScreen() {
     }
     setLoading(true);
     const logsCollection = collection(db, 'artifacts', appId, 'users', user.uid, 'routines', routineId as string, 'exercises', exerciseId as string, 'logs');
-    const q = query(logsCollection, orderBy('createdAt', 'desc')); // Pega os mais novos primeiro
+    const q = query(logsCollection, orderBy('createdAt', 'desc')); 
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const logsData: Log[] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Log));
       
-      // 5. ATUALIZA o estado com os logs agrupados
       setGroupedLogs(groupLogsByDate(logsData));
 
-      // Preenche os inputs com o último treino (se existir)
       if (logsData.length > 0 && weight === '' && reps === '' && logsData[0].weight != null && logsData[0].reps != null) {
         setWeight(logsData[0].weight.toString());
         setReps(logsData[0].reps.toString());
@@ -175,7 +166,6 @@ export default function LogExerciseScreen() {
     return () => unsubscribe();
   }, [user, routineId, exerciseId]);
 
-  // ... (useEffect do Cronômetro e funções do timer não mudam) ...
   useEffect(() => {
     if (isTimerActive && timeLeft > 0) {
       timerIntervalRef.current = setInterval(() => {
@@ -210,7 +200,6 @@ export default function LogExerciseScreen() {
     setTimeLeft((prevTime) => prevTime + seconds);
   };
   
-  // ... (handleSaveLog e handleDeleteLog não mudam) ...
   const handleSaveLog = async () => {
     if (!user || !routineId || !exerciseId || !weight || !reps) {
       Alert.alert("Erro", "Preencha peso e repetições.");
@@ -264,7 +253,6 @@ export default function LogExerciseScreen() {
     );
   };
 
-
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
@@ -283,12 +271,10 @@ export default function LogExerciseScreen() {
         <KeyboardAvoidingView 
           behavior={Platform.OS === "ios" ? "padding" : "height"}
         >
-          {/* Informações do Exercício (COM LINK DO GRÁFICO) */}
           <View style={styles.infoBox}>
             <Text style={styles.infoTitle}>Séries Programadas:</Text>
             <Text style={styles.infoText}>{exerciseSets}</Text>
             
-            {/* 6. LINK DO GRÁFICO ADICIONADO DE VOLTA */}
             <Link 
               href={{ 
                 pathname: `/charts/${exerciseId}`, 
@@ -305,7 +291,6 @@ export default function LogExerciseScreen() {
             </Link>
           </View>
 
-          {/* Inputs de Registro */}
           <View style={styles.logBox}>
             <TextInput
               style={styles.input}
@@ -353,10 +338,8 @@ export default function LogExerciseScreen() {
             </TouchableOpacity>
           </View>
           
-          {/* Título do Histórico */}
           <Text style={styles.historyTitle}>Histórico</Text>
 
-          {/* 7. LÓGICA DE RENDERIZAÇÃO ATUALIZADA (AGRUPADA) */}
           {groupedLogs.length === 0 ? (
             <Text style={styles.emptyText}>Nenhuma série registrada.</Text>
           ) : (
@@ -401,7 +384,6 @@ export default function LogExerciseScreen() {
         </KeyboardAvoidingView>
       </ScrollView>
 
-      {/* O CRONÔMETRO FLUTUANTE */}
       {isTimerActive && (
         <View style={styles.timerContainer}>
           <View>
@@ -423,7 +405,7 @@ export default function LogExerciseScreen() {
   );
 }
 
-// 8. Estilos ATUALIZADOS
+// Estilos
 const styles = StyleSheet.create({
   container: {
     flex: 1, 
@@ -495,7 +477,6 @@ const styles = StyleSheet.create({
     marginLeft: 20,
     marginBottom: 10,
   },
-  // NOVO Estilo para subtítulo de data
   historySubtitle: {
     fontSize: 16,
     fontWeight: 'bold',
@@ -509,7 +490,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginHorizontal: 20,
     marginBottom: 15,
-    overflow: 'hidden', // Para os cantos
+    overflow: 'hidden', 
   },
   emptyText: {
     color: '#B0B0B0',
@@ -576,7 +557,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontStyle: 'italic',
   },
-  // Estilos do Cronômetro (sem mudança)
   timerContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',

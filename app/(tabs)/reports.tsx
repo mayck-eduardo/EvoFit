@@ -1,6 +1,7 @@
 // app/(tabs)/reports.tsx
-import { FontAwesome } from '@expo/vector-icons';
-import { useRouter } from 'expo-router'; // Para navegar
+
+import { FontAwesome } from '@expo/vector-icons'; // Importa o FontAwesome
+import { useRouter } from 'expo-router';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
@@ -25,12 +26,14 @@ export default function ReportsScreen() {
   const [user, setUser] = useState<User | null>(auth.currentUser);
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [loading, setLoading] = useState(true);
-  const router = useRouter(); // Hook de navegação
+  const router = useRouter(); 
 
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
-      setLoading(false); 
+      if (!currentUser) {
+        setLoading(false); 
+      }
     });
     return () => unsubscribeAuth();
   }, []);
@@ -59,7 +62,7 @@ export default function ReportsScreen() {
   // Navega para a lista de exercícios da ficha selecionada
   const handleSelectRoutine = (routine: Routine) => {
     router.push({
-      pathname: `/report-exercises/${routine.id}`,
+      pathname: `/report-exercises/${routine.id}`, // Navega para a nova tela
       params: { routineName: routine.name },
     });
   };
