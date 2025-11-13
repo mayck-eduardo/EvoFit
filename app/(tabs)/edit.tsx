@@ -1,5 +1,24 @@
+// app/(tabs)/edit.tsx
+
+import React, { useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView // Mudamos para ScrollView para comportar as duas listas
+  ,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+// 1. Importações Novas (trazidas de routine/[id].tsx)
 import { FontAwesome } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
 import { User, onAuthStateChanged } from 'firebase/auth';
 import {
   addDoc,
@@ -13,65 +32,68 @@ import {
   updateDoc,
   writeBatch
 } from 'firebase/firestore';
-import React, { useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View
-} from 'react-native';
-import DraggableFlatList from 'react-native-draggable-flatlist';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import DraggableFlatList from 'react-native-draggable-flatlist'; // Para as duas listas
 import { appId, auth, db } from '../../firebaseConfig';
 
-
-
-// Imports de Backup/Import FORAM REMOVIDOS
-
+// --- Interfaces ---
 export interface Routine {
   id: string;
   name: string;
+  order: number;
+  createdAt?: { seconds: number };
+}
+
+// 2. Interface de Exercício (trazida de routine/[id].tsx)
+interface Exercise {
+  id: string;
+  name: string;
+  sets: string;
+  order: number;
   createdAt?: { seconds: number };
 }
 
 export default function EditScreen() {
-  const [routines, setRoutines] = useState<Routine[]>([]);
-  const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<User | null>(auth.currentUser);
+  const [loadingRoutines, setLoadingRoutines] = useState(true);
 
-  // Modal de Ficha
+  // Estados da Ficha
+  const [routines, setRoutines] = useState<Routine[]>([]);
   const [routineModalVisible, setRoutineModalVisible] = useState(false);
   const [newRoutineName, setNewRoutineName] = useState('');
-  const [saveLoading, setSaveLoading] = useState(false); 
-  
   const [editingRoutine, setEditingRoutine] = useState<Routine | null>(null);
-  const [actionLoading, setActionLoading] = useState<string | null>(null); 
-  
-  const router = useRouter(); 
 
-  // useEffect de auth
+  // 3. NOVOS ESTADOS (para Exercícios)
+  const [selectedRoutine, setSelectedRoutine] = useState<Routine | null>(null);
+  const [exercises, setExercises] = useState<Exercise[]>([]);
+  const [loadingExercises, setLoadingExercises] = useState(false);
+  const [exerciseModalVisible, setExerciseModalVisible] = useState(false);
+  const [editingExercise, setEditingExercise] = useState<Exercise | null>(null);
+  const [newExerciseName, setNewExerciseName] = useState('');
+  const [newExerciseSets, setNewExerciseSets] = useState('');
+  
+  // Loadings
+  const [saveLoading, setSaveLoading] = useState(false); 
+  const [actionLoading, setActionLoading] = useState<string | null>(null); // Para Fichas
+  const [exerciseActionLoading, setExerciseActionLoading] = useState<string | null>(null); // Para Exercícios
+
+  // --- Efeitos (useEffect) ---
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
-      setLoading(false); 
+      if (!currentUser) {
+        setLoadingRoutines(false);
+        setRoutines([]);
+        setExercises([]);
+        setSelectedRoutine(null);
+      }
     });
     return () => unsubscribeAuth();
   }, []);
 
-  // useEffect de buscar dados
+  // Efeito para buscar FICHAS
   useEffect(() => {
-    if (!user) {
-      setRoutines([]);
-      return;
-    }
-    setLoading(true);
+    if (!user) return;
+    setLoadingRoutines(true);
     const userId = user.uid;
     const userRoutinesCollection = collection(db, 'artifacts', appId, 'users', userId, 'routines');
     const q = query(userRoutinesCollection, orderBy("order", "asc"));
@@ -79,66 +101,74 @@ export default function EditScreen() {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const routinesData: Routine[] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Routine));
       setRoutines(routinesData);
-      setLoading(false);
+      setLoadingRoutines(false);
     }, (error) => {
       console.error("Erro ao buscar fichas: ", error);
-      setLoading(false);
+      setLoadingRoutines(false);
     });
     return () => unsubscribe();
   }, [user]);
 
-  // ... (Funções de CRUD de Fichas não mudam) ...
-  const openAddModal = () => {
+  // 4. NOVO EFEITO (para buscar EXERCÍCIOS)
+  useEffect(() => {
+    if (!user || !selectedRoutine) {
+      setExercises([]); // Limpa a lista se nenhuma ficha estiver selecionada
+      return;
+    }
+    setLoadingExercises(true);
+    const exercisesCollection = collection(db, 'artifacts', appId, 'users', user.uid, 'routines', selectedRoutine.id, 'exercises');
+    const q = query(exercisesCollection, orderBy("order", "asc"));
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const exercisesData: Exercise[] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Exercise));
+      setExercises(exercisesData);
+      setLoadingExercises(false);
+    }, (error) => {
+      console.error("Erro ao buscar exercícios: ", error);
+      setLoadingExercises(false);
+    });
+    return () => unsubscribe(); // Limpa a escuta quando o componente ou a ficha mudar
+  }, [user, selectedRoutine]); // Roda de novo se o usuário ou a ficha selecionada mudar
+
+
+  // --- Funções CRUD de FICHAS ---
+  const openAddRoutineModal = () => {
     setEditingRoutine(null);
     setNewRoutineName('');
     setRoutineModalVisible(true);
   };
-
-  const openEditModal = (routine: Routine) => {
+  const openEditRoutineModal = (routine: Routine) => {
     setEditingRoutine(routine);
     setNewRoutineName(routine.name);
     setRoutineModalVisible(true);
   };
-
   const handleSaveRoutine = async () => {
-    if (!user || !newRoutineName) {
-      Alert.alert("Erro", "Digite um nome para a ficha.");
-      return;
-    }
+    if (!user || !newRoutineName) return;
     setSaveLoading(true);
     try {
-      const userId = user.uid;
-      const routinesCollection = collection(db, 'artifacts', appId, 'users', userId, 'routines');
-      
+      const routinesCollection = collection(db, 'artifacts', appId, 'users', user.uid, 'routines');
       if (editingRoutine) {
-        const routineRef = doc(db, routinesCollection.path, editingRoutine.id);
-        await updateDoc(routineRef, {
-          name: newRoutineName
-        });
+        const routineRef = doc(routinesCollection, editingRoutine.id);
+        await updateDoc(routineRef, { name: newRoutineName });
       } else {
         await addDoc(routinesCollection, {
           name: newRoutineName,
           createdAt: serverTimestamp(),
-          order: routines.length
+          order: routines.length 
         });
       }
-      
-      setNewRoutineName('');
       setRoutineModalVisible(false);
       setEditingRoutine(null);
     } catch (error) {
       console.error("Erro ao salvar ficha: ", error);
-      Alert.alert("Erro", "Não foi possível salvar a ficha.");
     }
     setSaveLoading(false);
   };
-
   const handleDeleteRoutine = (routineId: string) => {
     if (!user) return;
-    
     Alert.alert(
       "Deletar Ficha",
-      "Tem certeza que deseja deletar esta ficha? TODOS os exercícios e logs serão apagados para sempre.",
+      "Tem certeza? TODOS os exercícios e logs serão apagados.",
       [
         { text: "Cancelar", style: "cancel" },
         { 
@@ -147,28 +177,23 @@ export default function EditScreen() {
           onPress: async () => {
             setActionLoading(routineId); 
             try {
-              const userId = user.uid;
-              const routineRef = doc(db, 'artifacts', appId, 'users', userId, 'routines', routineId);
-              
+              const routineRef = doc(db, 'artifacts', appId, 'users', user.uid, 'routines', routineId);
               const exercisesCollection = collection(routineRef, 'exercises');
               const exercisesSnapshot = await getDocs(exercisesCollection);
               const batch = writeBatch(db);
-
               for (const exerciseDoc of exercisesSnapshot.docs) {
                 const logsCollection = collection(exerciseDoc.ref, 'logs');
                 const logsSnapshot = await getDocs(logsCollection);
-                logsSnapshot.forEach(logDoc => {
-                  batch.delete(logDoc.ref);
-                });
+                logsSnapshot.forEach(logDoc => batch.delete(logDoc.ref));
                 batch.delete(exerciseDoc.ref);
               }
-              
               batch.delete(routineRef);
               await batch.commit();
-
+              if (selectedRoutine?.id === routineId) {
+                setSelectedRoutine(null); // Limpa a seleção se a ficha ativa for deletada
+              }
             } catch (error) {
               console.error("Erro ao deletar ficha: ", error);
-              Alert.alert("Erro", "Não foi possível deletar a ficha.");
             }
             setActionLoading(null); 
           }
@@ -176,50 +201,117 @@ export default function EditScreen() {
       ]
     );
   };
-
-  const handleDragEnd = async ({ data }: { data: Routine[] }) => {
-  if (!user) return;
-  // 1. Atualiza o estado local para a UI ficar instantânea
-  setRoutines(data); 
-
-  // 2. Prepara um "lote" de escritas no Firestore
-  const batch = writeBatch(db);
-  const userId = user.uid;
-
-  // 3. Para cada item na nova ordem, atualiza o campo "order" no Firestore
-  data.forEach((routine, index) => {
-    const routineRef = doc(db, 'artifacts', appId, 'users', userId, 'routines', routine.id);
-    batch.update(routineRef, { order: index });
-  });
-
-  // 4. Executa todas as atualizações de uma vez
-  try {
-    await batch.commit();
-  } catch (error) {
-    console.error("Erro ao reordenar fichas: ", error);
-    Alert.alert("Erro", "Não foi possível salvar a nova ordem.");
-  }
-};
-
-  const navigateToManageExercises = (routine: Routine) => {
-    router.push({
-      pathname: `/routine/${routine.id}`,
-      params: { name: routine.name },
+  const handleDragEndRoutines = async ({ data }: { data: Routine[] }) => {
+    if (!user) return;
+    setRoutines(data); 
+    const batch = writeBatch(db);
+    data.forEach((routine, index) => {
+      const routineRef = doc(db, 'artifacts', appId, 'users', user.uid, 'routines', routine.id);
+      batch.update(routineRef, { order: index });
     });
+    try {
+      await batch.commit();
+    } catch (error) {
+      console.error("Erro ao reordenar fichas: ", error);
+    }
   };
 
-  // Funções de Backup/Import FORAM REMOVIDAS
+  // 5. NOVAS FUNÇÕES (CRUD de EXERCÍCIOS) - Copiadas de routine/[id].tsx
+  const openAddExerciseModal = () => {
+    setEditingExercise(null);
+    setNewExerciseName('');
+    setNewExerciseSets('');
+    setExerciseModalVisible(true);
+  };
+  const openEditExerciseModal = (exercise: Exercise) => {
+    setEditingExercise(exercise);
+    setNewExerciseName(exercise.name);
+    setNewExerciseSets(exercise.sets);
+    setExerciseModalVisible(true);
+  };
+  const handleSaveExercise = async () => {
+    if (!user || !selectedRoutine || !newExerciseName || !newExerciseSets) {
+      Alert.alert("Erro", "Preencha todos os campos.");
+      return;
+    }
+    setSaveLoading(true);
+    try {
+      // Usa o 'selectedRoutine.id' do estado
+      const exercisesCollection = collection(db, 'artifacts', appId, 'users', user.uid, 'routines', selectedRoutine.id, 'exercises');
+      if (editingExercise) {
+        const exerciseRef = doc(exercisesCollection, editingExercise.id);
+        await updateDoc(exerciseRef, {
+          name: newExerciseName,
+          sets: newExerciseSets,
+        });
+      } else {
+        await addDoc(exercisesCollection, {
+          name: newExerciseName,
+          sets: newExerciseSets,
+          createdAt: serverTimestamp(),
+          order: exercises.length 
+        });
+      }
+      setExerciseModalVisible(false);
+      setEditingExercise(null);
+    } catch (error) {
+      console.error("Erro ao salvar exercício: ", error);
+    }
+    setSaveLoading(false);
+  };
+  const handleDeleteExercise = (exerciseId: string) => {
+    if (!user || !selectedRoutine) return;
+    Alert.alert(
+      "Deletar Exercício",
+      "Tem certeza? Todos os logs de progresso serão apagados.",
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Deletar",
+          style: "destructive",
+          onPress: async () => {
+            setExerciseActionLoading(exerciseId);
+            try {
+              const exerciseRef = doc(db, 'artifacts', appId, 'users', user.uid, 'routines', selectedRoutine.id, 'exercises', exerciseId);
+              const logsCollection = collection(exerciseRef, 'logs');
+              const logsSnapshot = await getDocs(logsCollection);
+              const batch = writeBatch(db);
+              logsSnapshot.forEach(logDoc => batch.delete(logDoc.ref));
+              batch.delete(exerciseRef);
+              await batch.commit();
+            } catch (error) {
+              console.error("Erro ao deletar exercício: ", error);
+            }
+            setExerciseActionLoading(null);
+          }
+        }
+      ]
+    );
+  };
+  const handleDragEndExercises = async ({ data }: { data: Exercise[] }) => {
+    if (!user || !selectedRoutine) return;
+    setExercises(data); 
+    const batch = writeBatch(db);
+    data.forEach((exercise, index) => {
+      const exerciseRef = doc(db, 'artifacts', appId, 'users', user.uid, 'routines', selectedRoutine.id, 'exercises', exercise.id);
+      batch.update(exerciseRef, { order: index });
+    });
+    try {
+      await batch.commit();
+    } catch (error) {
+      console.error("Erro ao reordenar exercícios: ", error);
+    }
+  };
 
-  // ----- RENDERIZAÇÃO -----
 
-  if (loading && !user) {
+  // --- Renderização ---
+  if (loadingRoutines && !user) {
     return (
       <SafeAreaView style={styles.container}>
         <ActivityIndicator size="large" color="#FFFFFF" style={{ flex: 1 }} />
       </SafeAreaView>
     );
   }
-
   if (!user) {
     return (
       <SafeAreaView style={styles.container}>
@@ -232,101 +324,147 @@ export default function EditScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* 6. OS DOIS MODAIS (Ficha e Exercício) */}
       <Modal
         animationType="slide"
         transparent={true}
         visible={routineModalVisible}
         onRequestClose={() => setRoutineModalVisible(false)}
       >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          style={styles.modalOverlay}
-        >
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>{editingRoutine ? "Editar Ficha" : "Nova Ficha"}</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Ex: Segunda: Peito/Tríceps"
-              placeholderTextColor="#777"
-              value={newRoutineName}
-              onChangeText={setNewRoutineName}
-            />
-            {saveLoading ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
-            ) : (
+            <TextInput style={styles.input} placeholder="Ex: Segunda: Peito/Tríceps" placeholderTextColor="#777" value={newRoutineName} onChangeText={setNewRoutineName} />
+            {saveLoading ? <ActivityIndicator size="small" color="#FFFFFF" /> : (
               <View style={styles.buttonContainer}>
-                <Pressable onPress={() => setRoutineModalVisible(false)}>
-                  <Text style={styles.cancelText}>Cancelar</Text>
-                </Pressable>
-                <TouchableOpacity style={styles.buttonSmall} onPress={handleSaveRoutine}>
-                  <Text style={styles.buttonText}>Salvar</Text>
-                </TouchableOpacity>
+                <Pressable onPress={() => setRoutineModalVisible(false)}><Text style={styles.cancelText}>Cancelar</Text></Pressable>
+                <TouchableOpacity style={styles.buttonSmall} onPress={handleSaveRoutine}><Text style={styles.buttonText}>Salvar</Text></TouchableOpacity>
               </View>
             )}
           </View>
         </KeyboardAvoidingView>
       </Modal>
 
-      <View style={styles.header}>
-        <Text style={styles.title}>Fichas</Text>
-        {/* Botões de Importar/Exportar FORAM REMOVIDOS do header */}
-        <Text style={styles.subtitle}>Clique em uma ficha para gerenciar seus exercícios.</Text>
-      </View>
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={exerciseModalVisible}
+        onRequestClose={() => setExerciseModalVisible(false)}
+      >
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>{editingExercise ? "Editar Exercício" : "Novo Exercício"}</Text>
+            <TextInput style={styles.input} placeholder="Nome do Exercício (Ex: Supino Reto)" placeholderTextColor="#777" value={newExerciseName} onChangeText={setNewExerciseName} />
+            <TextInput style={styles.input} placeholder="Séries (Ex: 4x 10-12)" placeholderTextColor="#777" value={newExerciseSets} onChangeText={setNewExerciseSets} />
+            {saveLoading ? <ActivityIndicator size="small" color="#FFFFFF" /> : (
+              <View style={styles.buttonContainer}>
+                <Pressable onPress={() => setExerciseModalVisible(false)}><Text style={styles.cancelText}>Cancelar</Text></Pressable>
+                <TouchableOpacity style={styles.buttonSmall} onPress={handleSaveExercise}><Text style={styles.buttonText}>Salvar</Text></TouchableOpacity>
+              </View>
+            )}
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
 
-      <DraggableFlatList
-        data={routines}
-        keyExtractor={(item) => item.id}
-        onDragEnd={handleDragEnd} 
-        style={styles.cardContainerPai}
-        renderItem={({ item }) => (
-          <View style={styles.cardContainer}>
-            <TouchableOpacity 
-              style={styles.card} 
-              onPress={() => navigateToManageExercises(item)}
-            >
-              <Text style={styles.cardText}>{item.name}</Text>
-              <Text style={styles.cardSubtext}>Gerenciar Exercícios →</Text>
-            </TouchableOpacity>
+      {/* 7. JSX ATUALIZADO (com ScrollView) */}
+      <ScrollView style={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.title}>Gerenciar Fichas</Text>
+          <Text style={styles.subtitle}>Adicione, edite ou reordene suas fichas.</Text>
+        </View>
+
+        {loadingRoutines ? (
+          <ActivityIndicator color="#FFFFFF" />
+        ) : (
+          <DraggableFlatList
+            data={routines}
+            keyExtractor={(item) => item.id}
+            onDragEnd={handleDragEndRoutines}
+            containerStyle={{ flex: 1 }}
+            ListEmptyComponent={<Text style={styles.emptyText}>Nenhuma ficha encontrada.</Text>}
+            renderItem={({ item, drag, isActive }) => {
+              const isSelected = selectedRoutine?.id === item.id;
+              return (
+                <View style={[styles.cardContainer, isActive && styles.cardDragging]}>
+                  <TouchableOpacity 
+                    style={[styles.card, isSelected && styles.cardSelected]} 
+                    onPress={() => setSelectedRoutine(item)} // 8. MUDANÇA (Seta o estado)
+                    onLongPress={drag}
+                  >
+                    <Text style={styles.cardText}>{item.name}</Text>
+                    <Text style={styles.cardSubtext}>{isSelected ? "Visualizando exercícios..." : "Toque para ver os exercícios"}</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity style={styles.iconButton} onPress={() => openEditRoutineModal(item)} disabled={actionLoading === item.id}>
+                    <FontAwesome name="pencil" size={24} color="#007AFF" /> 
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.iconButton} onPress={() => handleDeleteRoutine(item.id)} disabled={actionLoading === item.id}>
+                    {actionLoading === item.id ? <ActivityIndicator size="small" color="#FF4500" /> : <FontAwesome name="trash" size={24} color="#FF4500" />}
+                  </TouchableOpacity>
+                </View>
+              )
+            }}
+          />
+        )}
+
+        {/* 9. NOVA SEÇÃO DE EXERCÍCIOS */}
+        {selectedRoutine && (
+          <View style={styles.exerciseSection}>
+            <View style={styles.divider}>
+              <Text style={styles.title}>Exercícios</Text>
+              <TouchableOpacity onPress={openAddExerciseModal} style={styles.addButton}>
+                <Text style={styles.addButtonText}>Adicionar</Text>
+                <FontAwesome name="plus" size={20} color="#007AFF" />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.subtitle}>Gerenciar exercícios de: {selectedRoutine.name}</Text>
             
-            <TouchableOpacity 
-              style={styles.iconButton} 
-              onPress={() => openEditModal(item)}
-              disabled={actionLoading === item.id}
-            >
-              <FontAwesome name="pencil" size={24} color="#007AFF" /> 
-            </TouchableOpacity>
+            {loadingExercises ? (
+              <ActivityIndicator color="#FFFFFF" style={{ marginVertical: 20 }} />
+            ) : (
+              <DraggableFlatList
+                data={exercises}
+                keyExtractor={(item) => item.id}
+                onDragEnd={handleDragEndExercises}
+                ListEmptyComponent={<Text style={styles.emptyText}>Nenhum exercício nesta ficha.</Text>}
+                renderItem={({ item, drag, isActive }) => (
+                  <View style={[styles.exerciseCardContainer, isActive && styles.cardDragging]}>
+                    <TouchableOpacity 
+                      style={styles.exerciseCard}
+                      onLongPress={drag}
+                    >
+                      <View>
+                        <Text style={styles.exerciseText}>{item.name}</Text>
+                        <Text style={styles.exerciseSets}>{item.sets}</Text>
+                      </View>
+                    </TouchableOpacity>
 
-            <TouchableOpacity 
-              style={styles.iconButton} 
-              onPress={() => handleDeleteRoutine(item.id)}
-              disabled={actionLoading === item.id} 
-            >
-              {actionLoading === item.id ? (
-                <ActivityIndicator size="small" color="#FF4500" />
-              ) : (
-                <FontAwesome name="trash" size={24} color="#FF4500" />
-              )}
-            </TouchableOpacity>
+                    <TouchableOpacity style={styles.iconButton} onPress={() => openEditExerciseModal(item)} disabled={exerciseActionLoading === item.id}>
+                      <FontAwesome name="pencil" size={20} color="#007AFF" />
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.iconButton} onPress={() => handleDeleteExercise(item.id)} disabled={exerciseActionLoading === item.id}>
+                      {exerciseActionLoading === item.id ? <ActivityIndicator size="small" color="#FF4500" /> : <FontAwesome name="trash" size={20} color="#FF4500" />}
+                    </TouchableOpacity>
+                  </View>
+                )}
+              />
+            )}
           </View>
         )}
-        contentContainerStyle={{ paddingHorizontal: 20 }}
-        ListEmptyComponent={
-          <Text style={styles.emptyText}>
-            Nenhuma ficha encontrada. Clique no + para adicionar.
-          </Text>
-        }
-      />
+      </ScrollView>
 
-      <TouchableOpacity
-        style={styles.fab}
-        onPress={openAddModal}
-      >
-        <Text style={styles.fabText}>+</Text>
-      </TouchableOpacity>
+      {/* Botão Flutuante (FAB) para ADICIONAR FICHA */}
+      {!selectedRoutine && ( // Só mostra o FAB de Ficha se nenhuma ficha estiver selecionada
+         <TouchableOpacity
+            style={styles.fab}
+            onPress={openAddRoutineModal}
+          >
+          <Text style={styles.fabText}>+</Text>
+        </TouchableOpacity>
+      )}
+     
     </SafeAreaView>
   );
-
-  
 }
 
 // Estilos
@@ -341,46 +479,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 20,
   },
-  input: {
-    backgroundColor: '#1E1E1E',
-    color: '#FFFFFF',
-    padding: 15,
-    borderRadius: 8,
-    fontSize: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#333',
-  },
-  buttonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
   header: {
     padding: 20,
     borderBottomWidth: 1,
     borderBottomColor: '#333',
   },
-  headerActions: { // Estilo não é mais usado, mas pode ficar
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    alignItems: 'center',
-    position: 'absolute',
-    right: 20,
-    top: 25,
-  },
-  actionButton: { // Estilo não é mais usado, mas pode ficar
-    marginLeft: 20,
-    padding: 5,
-  },
   title: {
-    fontSize: 32,
+    fontSize: 28, // Reduzido para caber
     fontWeight: 'bold',
     color: '#FFFFFF',
     marginBottom: 8,
   },
   subtitle: {
-    fontSize: 18,
+    fontSize: 16, // Reduzido
     color: '#B0B0B0',
   },
   cardContainer: {
@@ -388,17 +499,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
     marginTop: 10,
-  },
-  cardContainerPai:{
-    marginBottom: 100,
+    paddingHorizontal: 20,
   },
   card: {
     backgroundColor: '#1E1E1E',
     padding: 24,
     borderRadius: 12,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: '#333',
     flex: 1, 
+  },
+  cardSelected: {
+    borderColor: '#007AFF', // Destaque azul
+    backgroundColor: '#2A2A3A',
+  },
+  cardDragging: {
+    opacity: 0.7,
   },
   cardText: {
     fontSize: 18,
@@ -411,16 +527,17 @@ const styles = StyleSheet.create({
     marginTop: 5,
   },
   iconButton: {
-    padding: 15, 
-    width: 60, 
+    padding: 10, // Reduzido
+    width: 50, // Reduzido
     alignItems: 'center'
   },
   emptyText: {
     color: '#B0B0B0',
     textAlign: 'center',
-    marginTop: 50,
+    marginVertical: 40,
     fontSize: 16,
   },
+  // FAB (Botão de Adicionar Ficha)
   fab: {
     position: 'absolute',
     bottom: 30,
@@ -442,6 +559,8 @@ const styles = StyleSheet.create({
     color: 'white',
     lineHeight: 30, 
   },
+  
+  // Modais (Estilos genéricos)
   modalOverlay: {
     flex: 1,
     justifyContent: 'center',
@@ -460,6 +579,16 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     marginBottom: 20,
   },
+  input: {
+    backgroundColor: '#1E1E1E',
+    color: '#FFFFFF',
+    padding: 15,
+    borderRadius: 8,
+    fontSize: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#333',
+  },
   buttonContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -472,8 +601,65 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     borderRadius: 8,
   },
+  buttonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
   cancelText: {
     color: '#FF4500',
     fontSize: 16,
+  },
+
+  // --- Seção de Exercícios (Nova) ---
+  exerciseSection: {
+    marginTop: 20,
+    borderTopWidth: 2,
+    borderTopColor: '#333',
+    paddingTop: 10,
+  },
+  divider: {
+    paddingHorizontal: 20,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  addButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#2A2A2A',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+  },
+  addButtonText: {
+    color: '#007AFF',
+    fontSize: 16,
+    marginRight: 8,
+  },
+  exerciseCardContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+    marginHorizontal: 20,
+    backgroundColor: '#1E1E1E',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#333',
+  },
+  exerciseCard: {
+    flex: 1,
+    padding: 20,
+  },
+  exerciseText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#FFFFFF',
+  },
+  exerciseSets: {
+    fontSize: 14,
+    color: '#B0B0B0',
+    marginTop: 4,
   },
 });

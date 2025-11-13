@@ -2,7 +2,7 @@ import { Inter_400Regular, Inter_700Bold, useFonts } from '@expo-google-fonts/in
 import { Stack } from 'expo-router';
 import { ActivityIndicator, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import ErrorBoundary from '../components/ErrorBoundary'; // 1. Importa o ErrorBoundary
+import ErrorBoundary from '../components/ErrorBoundary';
 
 export default function RootLayout() {
   let [fontsLoaded] = useFonts({
@@ -19,10 +19,9 @@ export default function RootLayout() {
   }
 
   return (
-    // 2. Envolve tudo com o ErrorBoundary
     <ErrorBoundary>
       <GestureHandlerRootView style={{ flex: 1 }}>
-        <Stack 
+        <Stack
           screenOptions={{
             headerStyle: {
               backgroundColor: '#1E1E1E',
@@ -42,13 +41,16 @@ export default function RootLayout() {
           
           {/* Telas de Navegação */}
           <Stack.Screen 
-            name="routine/[id]"
+            name="routine/[id]" 
           />
           <Stack.Screen 
-            name="charts/[exerciseId]"
+            name="charts/[exerciseId]" 
           />
           
-          {/* A rota "manage-exercises" foi REMOVIDA daqui */}
+          {/* ADICIONAR A NOVA ROTA DE RELATÓRIOS */}
+          <Stack.Screen 
+            name="report-exercises/[routineId]" 
+          />
 
         </Stack>
       </GestureHandlerRootView>

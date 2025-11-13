@@ -30,7 +30,7 @@ export default function TabLayout() {
       />
       
       <Tabs.Screen
-        name="edit" // Renomeada para "Fichas"
+        name="edit" // Fichas (Gerenciamento)
         options={{
           title: 'Fichas', 
           tabBarIcon: ({ color, size }) => (
@@ -39,6 +39,17 @@ export default function TabLayout() {
         }}
       />
 
+      {/* NOVA ABA DE RELATÓRIOS */}
+      <Tabs.Screen
+        name="reports" // o arquivo reports.tsx
+        options={{
+          title: 'Relatórios', 
+          tabBarIcon: ({ color, size }) => (
+            <FontAwesome name="bar-chart" size={size} color={color} /> 
+          ),
+        }}
+      />
+      
       <Tabs.Screen
         name="calendar" // Calendário
         options={{
@@ -49,9 +60,8 @@ export default function TabLayout() {
         }}
       />
       
-      {/* 1. NOVA TELA DE CONFIGURAÇÕES */}
       <Tabs.Screen
-        name="settings" // O novo arquivo settings.tsx
+        name="settings" // Configurações
         options={{
           title: 'Config.', 
           tabBarIcon: ({ color, size }) => (
