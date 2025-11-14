@@ -3,6 +3,7 @@
 import { FontAwesome } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { Picker } from '@react-native-picker/picker';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
@@ -36,6 +37,8 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch // Para o Som do Timer
+  ,
   Text,
   TextInput,
   TouchableOpacity,
@@ -43,16 +46,14 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { appId, auth, db } from '../../firebaseConfig';
-// 1. AQUI ESTÁ A CORREÇÃO:
-import { Picker } from '@react-native-picker/picker';
 
 // --- Interfaces ---
 interface UserProfile {
   email: string;
-  photoURL?: string; 
-  height?: number; 
-  weight?: number; 
-  birthdate?: string; 
+  photoURL?: string; // Armazena o nome do ícone (ex: "rocket")
+  height?: number; // em cm
+  weight?: number; // em kg
+  birthdate?: string; // "YYYY-MM-DD"
   gender?: 'male' | 'female' | 'other';
 }
 
@@ -62,6 +63,7 @@ const AVATARS: (keyof typeof FontAwesome.glyphMap)[] = [
 
 
 // --- Funções Helper (Delete) ---
+// (Estas funções são usadas pela Zona de Perigo)
 async function deleteCollection(collectionRef: any, batch: any) {
   const snapshot = await getDocs(collectionRef);
   for (const doc of snapshot.docs) {
@@ -95,8 +97,11 @@ export default function SettingsScreen() {
   const [authLoading, setAuthLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  // Prefs
+  // Estados de Preferências
   const [timerInput, setTimerInput] = useState('90'); 
+  const [completionMode, setCompletionMode] = useState<'any' | 'full'>('any'); 
+  const [weightUnit, setWeightUnit] = useState<'kg' | 'lbs'>('kg');
+  const [timerSound, setTimerSound] = useState(true); // Som do timer (true) ou Apenas Vibração (false)
 
   // Perfil
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -121,24 +126,33 @@ export default function SettingsScreen() {
         setEmail('');
         setPassword('');
       } else {
-        loadTimerPreference(); 
+        loadPreferences(); // Carrega TODAS as preferências
         loadUserProfile(currentUser.uid); 
       }
     });
     return () => unsubscribeAuth();
   }, []);
 
-  const loadTimerPreference = async () => {
+  // Carrega todas as prefs do AsyncStorage
+  const loadPreferences = async () => {
     try {
       const savedTimer = await AsyncStorage.getItem('@EvoFit:timerDefault');
-      if (savedTimer) {
-        setTimerInput(savedTimer);
-      }
+      if (savedTimer) setTimerInput(savedTimer);
+
+      const savedMode = await AsyncStorage.getItem('@EvoFit:completionMode');
+      if (savedMode === 'full' || savedMode === 'any') setCompletionMode(savedMode);
+      
+      const savedUnit = await AsyncStorage.getItem('@EvoFit:weightUnit');
+      if (savedUnit === 'kg' || savedUnit === 'lbs') setWeightUnit(savedUnit);
+      
+      const savedSound = await AsyncStorage.getItem('@EvoFit:timerSound');
+      setTimerSound(savedSound === null ? true : savedSound === 'true'); // Padrão é true
+
     } catch (e) {
-      console.error("Erro ao carregar timer pref: ", e);
+      console.error("Erro ao carregar prefs: ", e);
     }
   };
-
+  
   const loadUserProfile = async (uid: string) => {
     try {
       const userRef = doc(db, 'artifacts', appId, 'users', uid);
@@ -230,21 +244,30 @@ export default function SettingsScreen() {
   const handleLogout = () => {
     signOut(auth);
   };
-  const handleSaveTimer = async () => {
+
+  // Salva TODAS as prefs
+  const handleSavePreferences = async () => {
     const timerValue = parseInt(timerInput, 10);
     if (isNaN(timerValue) || timerValue <= 0) {
       Alert.alert("Erro", "Por favor, insira um número válido em segundos.");
       return;
     }
     
+    setLoading(true);
     try {
       await AsyncStorage.setItem('@EvoFit:timerDefault', timerInput);
-      Alert.alert("Sucesso", `Tempo de descanso salvo: ${timerInput} segundos.`);
+      await AsyncStorage.setItem('@EvoFit:completionMode', completionMode);
+      await AsyncStorage.setItem('@EvoFit:weightUnit', weightUnit);
+      await AsyncStorage.setItem('@EvoFit:timerSound', String(timerSound)); // Salva "true" ou "false"
+      
+      Alert.alert("Sucesso", "Preferências salvas!");
     } catch (e) {
-      console.error("Erro ao salvar timer pref: ", e);
-      Alert.alert("Erro", "Não foi possível salvar a preferência.");
+      console.error("Erro ao salvar prefs: ", e);
+      Alert.alert("Erro", "Não foi possível salvar as preferências.");
     }
+    setLoading(false);
   };
+  
   const handleExport = async () => {
     if (!user) return;
     setLoading(true);
@@ -425,7 +448,6 @@ export default function SettingsScreen() {
     return null;
   };
   
-  // --- Valores Calculados ---
   const bmi = calculateBMI();
   const age = calculateAge();
 
@@ -635,6 +657,21 @@ export default function SettingsScreen() {
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Preferências</Text>
+          
+          {/* Unidade de Peso */}
+          <Text style={styles.label}>Unidade de Peso</Text>
+          <View style={styles.pickerContainer}>
+            <Picker
+              selectedValue={weightUnit}
+              onValueChange={(itemValue) => setWeightUnit(itemValue)}
+              style={styles.picker}
+              dropdownIconColor="#FFFFFF"
+            >
+              <Picker.Item label="Quilogramas (kg)" value="kg" color={Platform.OS === 'android' ? '#FFFFFF' : '#000000'} />
+              <Picker.Item label="Libras (lbs)" value="lbs" color={Platform.OS === 'android' ? '#FFFFFF' : '#000000'} />
+            </Picker>
+          </View>
+          
           <Text style={styles.label}>Tempo de Descanso (segundos)</Text>
           <TextInput
             style={styles.input}
@@ -644,12 +681,41 @@ export default function SettingsScreen() {
             onChangeText={setTimerInput}
             keyboardType="number-pad"
           />
+          
+          <Text style={styles.label}>Marcar Calendário ao:</Text>
+          <View style={styles.pickerContainer}>
+            <Picker
+              selectedValue={completionMode}
+              onValueChange={(itemValue) => setCompletionMode(itemValue)}
+              style={styles.picker}
+              dropdownIconColor="#FFFFFF"
+            >
+              <Picker.Item label="Concluir 1 exercício" value="any" color={Platform.OS === 'android' ? '#FFFFFF' : '#000000'} />
+              <Picker.Item label="Concluir TODOS os exercícios" value="full" color={Platform.OS === 'android' ? '#FFFFFF' : '#000000'} />
+            </Picker>
+          </View>
+          
+          {/* Switch para Som do Timer */}
+          <View style={styles.switchContainer}>
+            <Text style={styles.label}>Alerta do Cronômetro</Text>
+            <View style={{flexDirection: 'row', alignItems: 'center'}}>
+              <Text style={styles.switchLabel}>{timerSound ? "Som e Vibração" : "Apenas Vibração"}</Text>
+              <Switch
+                trackColor={{ false: '#767577', true: '#007AFF' }}
+                thumbColor={timerSound ? '#f4f3f4' : '#f4f3f4'}
+                ios_backgroundColor="#3e3e3e"
+                onValueChange={() => setTimerSound(previousState => !previousState)}
+                value={timerSound}
+              />
+            </View>
+          </View>
+          
           <TouchableOpacity 
-            style={[styles.button, { backgroundColor: '#007AFF' }]} 
-            onPress={handleSaveTimer}
+            style={[styles.button, { backgroundColor: '#007AFF', marginTop: 20 }]} 
+            onPress={handleSavePreferences}
             disabled={loading}
           >
-            <Text style={styles.buttonText}>Salvar Tempo</Text>
+            <Text style={styles.buttonText}>Salvar Preferências</Text>
           </TouchableOpacity>
         </View>
         
@@ -852,7 +918,7 @@ const styles = StyleSheet.create({
     marginVertical: 20,
   },
 
-  // Perfil (Atualizado)
+  // Perfil
   profileSection: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -881,7 +947,7 @@ const styles = StyleSheet.create({
     marginBottom: 5,
   },
 
-  // Seleção de Avatar (NOVOS)
+  // Seleção de Avatar
   avatarContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -923,9 +989,23 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#333',
     overflow: 'hidden',
+    marginBottom: 10, 
   },
   picker: {
     color: '#FFFFFF', 
     height: 60,
   },
+  
+  // Switch
+  switchContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 15,
+  },
+  switchLabel: {
+    color: '#B0B0B0',
+    fontSize: 14,
+    marginRight: 10,
+  }
 });

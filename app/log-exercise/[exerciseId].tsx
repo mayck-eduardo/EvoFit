@@ -2,6 +2,9 @@
 
 import { FontAwesome } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Audio } from 'expo-av';
+import * as Haptics from 'expo-haptics';
+import * as Notifications from 'expo-notifications';
 import { Link, Stack, useLocalSearchParams, useNavigation } from 'expo-router';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import {
@@ -32,6 +35,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { appId, auth, db } from '../../firebaseConfig';
 import { calculateEpley1RM } from '../utils/formulas';
 
+// Configuração do manipulador de Notificações
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true, 
+    shouldSetBadge: false,
+  }),
+});
+
 interface Log {
   id: string;
   weight: number;
@@ -46,7 +58,6 @@ interface GroupedLog {
 }
 
 // --- Funções Helper ---
-
 const formatDate = (timestamp: { seconds: number } | undefined | null) => {
   if (!timestamp || typeof timestamp.seconds !== 'number') {
     return '...'; 
@@ -55,19 +66,14 @@ const formatDate = (timestamp: { seconds: number } | undefined | null) => {
   return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 };
 
-// 3. NOVA FUNÇÃO para agrupar logs por dia
 const groupLogsByDate = (logs: Log[]): GroupedLog[] => {
   const groups: { [key: string]: Log[] } = {};
   const todayStr = new Date().toDateString();
 
   logs.forEach(log => {
-    // 1. AQUI ESTÁ A CORREÇÃO
-    // Se o timestamp ainda não foi confirmado pelo servidor, pula este log
     if (!log.createdAt || typeof log.createdAt.seconds !== 'number') {
       return; 
     }
-    // FIM DA CORREÇÃO
-
     const date = new Date(log.createdAt.seconds * 1000);
     const dateStr = date.toDateString();
     
@@ -100,37 +106,63 @@ export default function LogExerciseScreen() {
   const [loading, setLoading] = useState(true);
   const [logLoading, setLogLoading] = useState(false); 
 
+  // Inputs
   const [weight, setWeight] = useState('');
   const [reps, setReps] = useState('');
   const [note, setNote] = useState(''); 
   const repsInputRef = useRef<TextInput>(null); 
   const noteInputRef = useRef<TextInput>(null); 
 
+  // Cronômetro
   const [timerDefault, setTimerDefault] = useState(90); 
   const [timeLeft, setTimeLeft] = useState(90);
+  const [timerEndTime, setTimerEndTime] = useState<number | null>(null); 
   const [isTimerActive, setIsTimerActive] = useState(false);
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
   
+  // Preferências
+  const [notificationIds, setNotificationIds] = useState<string[]>([]); 
+  const [weightUnit, setWeightUnit] = useState<'kg' | 'lbs'>('kg');
+  const [timerSound, setTimerSound] = useState(true);
+
+  
+  // --- Efeitos (useEffect) ---
   useEffect(() => {
+    requestNotificationPermissions();
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       if (currentUser) {
-        loadTimerPreference();
+        loadPreferences(); 
       }
     });
     return () => unsubscribeAuth();
   }, []);
 
-  const loadTimerPreference = async () => {
+  const requestNotificationPermissions = async () => {
+     const { status } = await Notifications.requestPermissionsAsync();
+     if (status !== 'granted') {
+       // Opcional: Avisar o usuário
+     }
+  };
+  const loadPreferences = async () => {
     try {
       const savedTimer = await AsyncStorage.getItem('@EvoFit:timerDefault');
+      const savedUnit = await AsyncStorage.getItem('@EvoFit:weightUnit');
+      const savedSound = await AsyncStorage.getItem('@EvoFit:timerSound');
+      
       if (savedTimer) {
         const numTimer = parseInt(savedTimer, 10);
         setTimerDefault(numTimer);
         setTimeLeft(numTimer);
       }
+      if (savedUnit === 'kg' || savedUnit === 'lbs') {
+        setWeightUnit(savedUnit);
+      }
+      if (savedSound) {
+        setTimerSound(savedSound === 'true');
+      }
     } catch (e) {
-      console.error("Erro ao carregar timer pref: ", e);
+      console.error("Erro ao carregar prefs: ", e);
     }
   };
 
@@ -140,6 +172,7 @@ export default function LogExerciseScreen() {
     });
   }, [navigation, exerciseName]);
 
+  // Efeito para buscar os logs
   useEffect(() => {
     if (!user || !routineId || !exerciseId) {
       setLoading(false);
@@ -151,9 +184,7 @@ export default function LogExerciseScreen() {
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const logsData: Log[] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Log));
-      
       setGroupedLogs(groupLogsByDate(logsData));
-
       if (logsData.length > 0 && weight === '' && reps === '' && logsData[0].weight != null && logsData[0].reps != null) {
         setWeight(logsData[0].weight.toString());
         setReps(logsData[0].reps.toString());
@@ -166,38 +197,124 @@ export default function LogExerciseScreen() {
     return () => unsubscribe();
   }, [user, routineId, exerciseId]);
 
+  // EFEITO DO CRONÔMETRO (Preciso)
   useEffect(() => {
-    if (isTimerActive && timeLeft > 0) {
+    if (isTimerActive && timerEndTime) {
       timerIntervalRef.current = setInterval(() => {
-        setTimeLeft((prevTime) => prevTime - 1);
-      }, 1000);
+        const remainingMs = timerEndTime - Date.now(); 
+        
+        if (remainingMs <= 0) {
+          setTimeLeft(0);
+          setIsTimerActive(false);
+          setTimerEndTime(null);
+          // O alerta visual só toca se a notificação final (nativa) já tiver sido cancelada
+          if (notificationIds.length === 0) { 
+             playTimerAlert();
+          }
+        } else {
+          setTimeLeft(Math.ceil(remainingMs / 1000));
+        }
+      }, 250);
     } 
-    else if (isTimerActive && timeLeft === 0) {
-      setIsTimerActive(false);
-      Alert.alert("Descanso Concluído!", "Hora da próxima série.");
-    }
     return () => {
       if (timerIntervalRef.current) {
         clearInterval(timerIntervalRef.current);
       }
     };
-  }, [isTimerActive, timeLeft]); 
-  
+  }, [isTimerActive, timerEndTime]); 
+
+  // --- Funções do Cronômetro ---
   const formatTime = (seconds: number) => {
     const minutes = Math.floor(seconds / 60);
     const remainingSeconds = seconds % 60;
     return `${minutes}:${remainingSeconds < 10 ? '0' : ''}${remainingSeconds}`;
   };
-  const startTimer = () => {
-    setTimeLeft(timerDefault); 
-    setIsTimerActive(true);
+
+  const playTimerAlert = async () => {
+    try {
+      if (timerSound) {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        try {
+          const { sound } = await Audio.Sound.createAsync(
+             require('../../assets/timer_complete.mp3') // <-- Verifique se este arquivo existe em /assets
+          );
+          await sound.playAsync();
+        } catch (soundError) {
+          console.log("Arquivo de som 'timer_complete.mp3' não encontrado. Usando vibração.");
+          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        }
+      } else {
+        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+      }
+      Alert.alert("Descanso Concluído!", "Hora da próxima série.");
+    } catch (e) {
+      console.log("Erro ao tocar alerta: ", e);
+      Alert.alert("Descanso Concluído!", "Hora da próxima série.");
+    }
   };
-  const stopTimer = () => {
+
+  const startTimer = async () => {
+    await stopTimer(); 
+    
+    const endTime = Date.now() + timerDefault * 1000; 
+    setTimeLeft(timerDefault); 
+    setTimerEndTime(endTime);  
+    setIsTimerActive(true);    
+
+    try {
+      const ids: string[] = [];
+      const intervals = [60, 30]; 
+      
+      for (const interval of intervals) {
+        if (timerDefault > interval) {
+          const id = await Notifications.scheduleNotificationAsync({
+            content: {
+              title: "EvoFit: Descanso",
+              body: `${interval} segundos restantes...`,
+              sound: null, 
+              vibrate: [0, 100], 
+            },
+            trigger: { seconds: timerDefault - interval }, 
+          });
+          ids.push(id);
+        }
+      }
+
+      const finalId = await Notifications.scheduleNotificationAsync({
+        content: {
+          title: "EvoFit: Descanso Concluído!",
+          body: `Hora de começar a próxima série de ${exerciseName}.`,
+          sound: timerSound ? 'default' : null,
+          vibrate: timerSound ? undefined : [0, 250, 250, 250],
+        },
+        trigger: { seconds: timerDefault },
+      });
+      ids.push(finalId);
+      
+      setNotificationIds(ids); 
+
+    } catch (e) {
+      console.error("Erro ao agendar notificação: ", e);
+    }
+  };
+
+  const stopTimer = async () => {
     setIsTimerActive(false);
+    setTimerEndTime(null);    
     setTimeLeft(timerDefault); 
+    
+    if (notificationIds.length > 0) {
+      for (const id of notificationIds) {
+        await Notifications.cancelScheduledNotificationAsync(id);
+      }
+      setNotificationIds([]); 
+    }
   };
+  
   const addTime = (seconds: number) => {
+    setTimerEndTime((prevEndTime) => (prevEndTime ? prevEndTime + seconds * 1000 : null));
     setTimeLeft((prevTime) => prevTime + seconds);
+    // Nota: Isso não reagenda as notificações nativas, apenas o timer visual.
   };
   
   const handleSaveLog = async () => {
@@ -262,11 +379,15 @@ export default function LogExerciseScreen() {
   }
 
   return (
+    // O Pai (SafeAreaView) tem flex: 1 e NÃO tem 'edges' na parte de baixo
     <SafeAreaView style={styles.container} edges={['left', 'right']}>
       <Stack.Screen options={{ title: (exerciseName as string) || 'Registrar' }} />
       
+      {/* O Filho 1 (ScrollView) NÃO tem flex: 1 */}
       <ScrollView 
         keyboardShouldPersistTaps="handled"
+        // Adiciona um padding na parte de baixo igual à altura do timer
+        contentContainerStyle={{ paddingBottom: 100 }} 
       >
         <KeyboardAvoidingView 
           behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -294,7 +415,7 @@ export default function LogExerciseScreen() {
           <View style={styles.logBox}>
             <TextInput
               style={styles.input}
-              placeholder="Peso (kg)"
+              placeholder={`Peso (${weightUnit})`}
               placeholderTextColor="#777"
               value={weight}
               onChangeText={setWeight}
@@ -353,12 +474,12 @@ export default function LogExerciseScreen() {
                       <React.Fragment key={item.id}>
                         <View style={styles.logItem}>
                           <Text style={styles.logIndex}>Série {group.data.length - index}</Text>
-                          <Text style={styles.logText}>{item.weight} kg</Text>
+                          <Text style={styles.logText}>{item.weight} {weightUnit}</Text>
                           <Text style={styles.logText}>x</Text>
                           <Text style={styles.logText}>{item.reps} reps</Text>
                           
                           {estimated1RM > 0 && (
-                            <Text style={styles.log1RM}>(Est. {estimated1RM} kg)</Text>
+                            <Text style={styles.log1RM}>(Est. {estimated1RM} {weightUnit})</Text>
                           )}
 
                           <Text style={styles.logTime}>{formatDate(item.createdAt)}</Text>
@@ -380,10 +501,11 @@ export default function LogExerciseScreen() {
               ))}
             </View>
           )}
-          <View style={{ height: 50 }} /> 
+          {/* Espaçador removido, pois usamos paddingBottom no ScrollView */}
         </KeyboardAvoidingView>
       </ScrollView>
 
+      {/* O CRONÔMETRO (Filho 2) - Agora com 'position: absolute' */}
       {isTimerActive && (
         <View style={styles.timerContainer}>
           <View>
@@ -481,9 +603,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     color: '#B0B0B0',
-    marginLeft: 20,
-    marginBottom: 10,
-    marginTop: 10,
+    paddingHorizontal: 20,
+    paddingBottom: 10,
+    paddingTop: 10,
+    backgroundColor: '#1E1E1E',
+    borderBottomWidth: 1,
+    borderBottomColor: '#333',
   },
   logGroup: {
     backgroundColor: '#1E1E1E',
@@ -557,7 +682,13 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontStyle: 'italic',
   },
+  
+  // *** ESTILO DO TIMER CORRIGIDO (V5) ***
   timerContainer: {
+    position: 'absolute', // <--- MUDANÇA
+    bottom: 0,
+    left: 0,
+    right: 0,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -566,6 +697,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     borderTopWidth: 1,
     borderTopColor: '#333',
+    // Adiciona padding para a "barra de gestos" do iOS
+    paddingBottom: Platform.OS === 'ios' ? 30 : 15, 
   },
   timerTextLabel: {
     color: '#B0B0B0',

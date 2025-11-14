@@ -14,17 +14,20 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import AsyncStorage from '@react-native-async-storage/async-storage'; // Importar AsyncStorage
 import { Picker } from '@react-native-picker/picker';
 import { Link, useNavigation } from 'expo-router';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import {
   collection,
+  deleteField // Importar deleteField
+  ,
   doc,
   onSnapshot,
   orderBy,
   query,
   serverTimestamp,
-  updateDoc,
+  updateDoc
 } from 'firebase/firestore';
 import { appId, auth, db } from '../../firebaseConfig';
 
@@ -33,6 +36,7 @@ export interface Routine {
   id: string;
   name: string;
   createdAt?: { seconds: number };
+  lastFullyCompleted?: { seconds: number }; // Adicionar o novo campo
 }
 interface Exercise {
   id: string;
@@ -50,7 +54,6 @@ const isToday = (timestamp: { seconds: number } | undefined) => {
   return date.toDateString() === today.toDateString();
 };
 
-// 1. NOVA FUNÇÃO HELPER (para a data no header)
 const getTodayDate = () => {
   const date = new Date();
   return date.toLocaleDateString('pt-BR', {
@@ -72,20 +75,37 @@ export default function WorkoutScreen() {
   const [initialLoading, setInitialLoading] = useState(true); 
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
+  // NOVO ESTADO para a preferência
+  const [completionMode, setCompletionMode] = useState<'any' | 'full'>('any');
+
   // --- Efeitos (useEffect) ---
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setInitialLoading(false); 
+      if (currentUser) {
+        loadCompletionMode(); // Carrega a preferência
+      }
     });
     return () => unsubscribeAuth();
   }, []);
+  
+  // NOVA FUNÇÃO (para ler a preferência)
+  const loadCompletionMode = async () => {
+    try {
+      const savedMode = await AsyncStorage.getItem('@EvoFit:completionMode');
+      if (savedMode === 'full' || savedMode === 'any') {
+        setCompletionMode(savedMode);
+      }
+    } catch (e) {
+      console.error("Erro ao carregar completion mode: ", e);
+    }
+  };
 
-  // Efeito para o Header (AGORA É DINÂMICO)
+  // Efeito para o Header
   useLayoutEffect(() => {
     navigation.setOptions({
       headerShown: true,
-      // 2. HEADER ATUALIZADO
       headerTitle: () => (
         <View>
           <Text style={styles.headerTitle}>Bom treino!</Text>
@@ -97,6 +117,7 @@ export default function WorkoutScreen() {
     });
   }, [navigation, user]);
 
+  // Efeito para buscar Fichas
   useEffect(() => {
     if (!user) {
       setRoutines([]);
@@ -124,6 +145,7 @@ export default function WorkoutScreen() {
     return () => unsubscribe(); 
   }, [user]); 
 
+  // Efeito para buscar Exercícios
   useEffect(() => {
     if (!user || !selectedRoutineId) {
       setExercises([]);
@@ -140,6 +162,10 @@ export default function WorkoutScreen() {
       const exercisesData: Exercise[] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Exercise));
       setExercises(exercisesData);
       setLoadingExercises(false);
+      
+      // Chama a verificação de conclusão DEPOIS que os exercícios são carregados
+      checkAndUpdateRoutineCompletion(exercisesData); 
+      
     }, (error) => {
       console.error("Erro ao buscar exercícios: ", error);
       Alert.alert("Erro", "Não foi possível carregar os exercícios.");
@@ -150,6 +176,32 @@ export default function WorkoutScreen() {
   }, [user, selectedRoutineId]); 
 
   // --- Funções de Ação ---
+  
+  // NOVA FUNÇÃO (para checar se o treino está completo)
+  const checkAndUpdateRoutineCompletion = async (currentExercises: Exercise[]) => {
+    if (!user || !selectedRoutineId || completionMode !== 'full') {
+      return; // Só roda se o modo for "completo"
+    }
+    
+    const totalCount = currentExercises.length;
+    const completedCount = currentExercises.filter(ex => isToday(ex.lastCompleted)).length;
+    
+    if (totalCount === 0) return;
+
+    try {
+      const routineRef = doc(db, 'artifacts', appId, 'users', user.uid, 'routines', selectedRoutineId);
+      if (completedCount === totalCount) {
+        // Marca como completo HOJE
+        await updateDoc(routineRef, { lastFullyCompleted: serverTimestamp() });
+      } else {
+        // Remove a marca (caso o usuário tenha desmarcado um item)
+        await updateDoc(routineRef, { lastFullyCompleted: deleteField() });
+      }
+    } catch (error) {
+      console.error("Erro ao atualizar status da ficha: ", error);
+    }
+  };
+  
   const handleToggleCheck = async (exercise: Exercise) => {
     if (!user || !selectedRoutineId) return;
 
@@ -161,6 +213,7 @@ export default function WorkoutScreen() {
       await updateDoc(exerciseRef, {
         lastCompleted: completed ? null : serverTimestamp() 
       });
+      // A verificação de "completo" agora é disparada pelo onSnapshot (useEffect[exercises])
     } catch (error) {
       console.error("Erro ao marcar exercício: ", error);
       Alert.alert("Erro", "Não foi possível atualizar o exercício.");
@@ -169,29 +222,21 @@ export default function WorkoutScreen() {
   };
   
   // --- Funções de Cálculo (para UI) ---
-  // 3. NOVAS FUNÇÕES DE CÁLCULO DE PROGRESSO
   const completedCount = exercises.filter(ex => isToday(ex.lastCompleted)).length;
   const totalCount = exercises.length;
   const progressPercent = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
 
   
   // --- Renderização ---
-  if (initialLoading) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <ActivityIndicator size="large" color="#FFFFFF" style={{ flex: 1 }} />
-      </SafeAreaView>
-    );
-  }
-
+  if (initialLoading) { /* ... (loading) ... */ }
   if (!user) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.content}>
-          <Text style={styles.emptyText}>Faça login na aba "Config." para começar.</Text>
-        </View>
-      </SafeAreaView>
-    );
+     return (
+       <SafeAreaView style={styles.container}>
+         <View style={styles.content}>
+           <Text style={styles.emptyText}>Faça login na aba "Config." para começar.</Text>
+         </View>
+       </SafeAreaView>
+     );
   }
 
   return (
@@ -216,15 +261,14 @@ export default function WorkoutScreen() {
                 key={routine.id} 
                 label={routine.name} 
                 value={routine.id} 
-                // 4. CORREÇÃO da cor do item no Android
-                color={Platform.OS === 'android' ? '#000000ff' : '#ffffffff'}
+                color={Platform.OS === 'android' ? '#FFFFFF' : '#000000'}
               />
             ))}
           </Picker>
         </View>
       )}
 
-      {/* 5. NOVA BARRA DE PROGRESSO */}
+      {/* Barra de Progresso */}
       {totalCount > 0 && (
         <View style={styles.progressContainer}>
           <Text style={styles.progressLabel}>Progresso: {completedCount} / {totalCount}</Text>
@@ -234,8 +278,7 @@ export default function WorkoutScreen() {
         </View>
       )}
 
-
-      {/* Lista de Exercícios (FlatList) ATUALIZADA */}
+      {/* Lista de Exercícios (FlatList) */}
       {loadingExercises ? (
         <ActivityIndicator color="#FFFFFF" style={{ marginTop: 20 }}/>
       ) : (
@@ -246,11 +289,8 @@ export default function WorkoutScreen() {
             const completed = isToday(item.lastCompleted);
             
             return (
-              // 6. LAYOUT DO CARD ATUALIZADO
-              // O card principal agora é uma View normal
               <View style={[styles.card, completed && styles.cardCompleted]}>
                 
-                {/* Botão de Check (separado) */}
                 <TouchableOpacity 
                   style={styles.checkButton} 
                   onPress={() => handleToggleCheck(item)}
@@ -267,7 +307,6 @@ export default function WorkoutScreen() {
                   )}
                 </TouchableOpacity>
 
-                {/* O Link agora envolve apenas o conteúdo clicável */}
                 <Link 
                   href={{ 
                     pathname: `/log-exercise/${item.id}`, 
@@ -280,13 +319,10 @@ export default function WorkoutScreen() {
                   asChild
                 >
                   <TouchableOpacity style={styles.cardContent}>
-                    {/* Conteúdo do Card */}
                     <View style={styles.cardTextContainer}>
                       <Text style={[styles.cardTitle, completed && styles.completedText]}>{item.name}</Text>
                       <Text style={[styles.cardSets, completed && styles.completedText]}>{item.sets}</Text>
                     </View>
-                    
-                    {/* Chevron (seta) para indicar navegação */}
                     <FontAwesome name="angle-right" size={24} color="#555" />
                   </TouchableOpacity>
                 </Link>
@@ -305,7 +341,7 @@ export default function WorkoutScreen() {
   );
 }
 
-// 7. ESTILOS ATUALIZADOS
+// Estilos
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -318,7 +354,7 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   
-  // Estilos de Header (NOVOS)
+  // Estilos de Header
   headerTitle: {
     fontSize: 22,
     fontWeight: 'bold',
@@ -353,7 +389,7 @@ const styles = StyleSheet.create({
     height: 60,
   },
 
-  // Barra de Progresso (NOVOS)
+  // Barra de Progresso
   progressContainer: {
     paddingHorizontal: 20,
     paddingTop: 15,
@@ -376,14 +412,14 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
 
-  // Estilos de Card (ATUALIZADOS)
+  // Estilos de Card
   card: {
     backgroundColor: '#1E1E1E',
     borderRadius: 12,
     marginBottom: 16,
     borderWidth: 1,
     borderColor: '#333',
-    flexDirection: 'row', // Mudança Principal
+    flexDirection: 'row', 
     alignItems: 'center',
     overflow: 'hidden',
   },
@@ -391,13 +427,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#2E3A2E', 
     borderColor: '#4CD964',
   },
-  // Botão de Check agora é separado
   checkButton: {
-    padding: 20, // Área de toque
+    padding: 20, 
     borderRightWidth: 1,
     borderRightColor: '#333',
   },
-  // Conteúdo clicável (para navegar)
   cardContent: {
     flex: 1,
     flexDirection: 'row',

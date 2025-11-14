@@ -1,11 +1,14 @@
+// app/(tabs)/calendar.tsx
+
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useIsFocused } from '@react-navigation/native'; // Importar useIsFocused
 import { onAuthStateChanged, User } from 'firebase/auth';
 import {
   collection,
   deleteField,
-  doc,
   getDocs,
   query,
-  updateDoc
+  writeBatch // Importar writeBatch
 } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import {
@@ -19,7 +22,7 @@ import { Calendar, DateData, LocaleConfig } from 'react-native-calendars';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { appId, auth, db } from '../../firebaseConfig';
 
-// Configuração de localização para Português Brasil
+// Configuração de localização
 LocaleConfig.locales['br'] = {
   monthNames: ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'],
   monthNamesShort: ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'],
@@ -33,8 +36,8 @@ LocaleConfig.defaultLocale = 'br';
 interface Routine {
   id: string;
   name: string;
+  lastFullyCompleted?: { seconds: number }; 
 }
-
 type MarkedDates = {
   [key: string]: {
     selected: boolean;
@@ -43,14 +46,11 @@ type MarkedDates = {
     selectedColor: string;
   };
 };
-
 interface Exercise {
   id: string;
   name: string;
   lastCompleted?: { seconds: number };
 }
-
-// Funções Utilitárias
 const formatDate = (timestamp: { seconds: number }): string => {
   const date = new Date(timestamp.seconds * 1000);
   return date.toISOString().split('T')[0]; // YYYY-MM-DD
@@ -61,6 +61,8 @@ export default function CalendarScreen() {
   const [loading, setLoading] = useState(true);
   const [markedDates, setMarkedDates] = useState<MarkedDates>({});
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  
+  const isFocused = useIsFocused(); // Hook para saber se a aba está em foco
 
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
@@ -69,67 +71,77 @@ export default function CalendarScreen() {
     return () => unsubscribeAuth();
   }, []);
 
-  // Efeito para buscar todas as datas de conclusão de treino
+  // Efeito para buscar as datas
   useEffect(() => {
-    if (!user) {
+    // Só busca se o usuário estiver logado E a tela estiver em foco
+    if (user && isFocused) {
+      fetchWorkoutDates();
+    } else if (!user) {
+      // Limpa as datas se o usuário deslogar
       setLoading(false);
       setMarkedDates({}); 
-      return;
     }
+  }, [user, isFocused]); // Depende do foco da tela
 
-    const fetchWorkoutDates = async () => {
-      setLoading(true);
+  // LÓGICA DE BUSCA ATUALIZADA
+  const fetchWorkoutDates = async () => {
+    if (!user) return;
+    setLoading(true);
+    
+    try {
+      // 1. Lê a preferência do usuário
+      const mode = await AsyncStorage.getItem('@EvoFit:completionMode') || 'any';
       const userId = user.uid;
-
+      const uniqueDates = new Set<string>();
+      
       const routinesQuery = query(
         collection(db, 'artifacts', appId, 'users', userId, 'routines')
       );
+      const routinesSnapshot = await getDocs(routinesQuery);
 
-      try {
-        const routinesSnapshot = await getDocs(routinesQuery);
-        const routineIds = routinesSnapshot.docs.map(doc => doc.id);
-
-        const uniqueDates = new Set<string>();
-
-        for (const routineId of routineIds) {
+      if (mode === 'any') {
+        // Lógica Antiga (Modo "Qualquer"): Checa todos os exercícios
+        for (const routineDoc of routinesSnapshot.docs) {
           const exercisesQuery = query(
-            collection(db, 'artifacts', appId, 'users', userId, 'routines', routineId, 'exercises')
+            collection(routineDoc.ref, 'exercises')
           );
-
           const exercisesSnapshot = await getDocs(exercisesQuery);
-
           exercisesSnapshot.forEach(doc => {
             const exercise = doc.data() as Exercise;
             if (exercise.lastCompleted) {
-              const dateString = formatDate(exercise.lastCompleted);
-              uniqueDates.add(dateString);
+              uniqueDates.add(formatDate(exercise.lastCompleted));
             }
           });
         }
-
-        // Formatar para o estado do calendário
-        const newMarkedDates: MarkedDates = {};
-        uniqueDates.forEach(date => {
-          newMarkedDates[date] = {
-            selected: false,
-            marked: true,
-            dotColor: '#4CD964', // Verde
-            selectedColor: '#3A3A3A',
-          };
+      } else {
+        // Lógica Nova (Modo "Completo"): Checa apenas o campo da ficha
+        routinesSnapshot.forEach(doc => {
+          const routine = doc.data() as Routine;
+          if (routine.lastFullyCompleted) {
+            uniqueDates.add(formatDate(routine.lastFullyCompleted));
+          }
         });
-
-        setMarkedDates(newMarkedDates);
-      } catch (error) {
-        console.error("Erro ao buscar datas de treino: ", error);
-        Alert.alert("Erro", "Não foi possível carregar as datas de treino.");
-      } finally {
-        setLoading(false);
       }
-    };
 
-    fetchWorkoutDates();
-    
-  }, [user]);
+      // Formatar para o estado do calendário
+      const newMarkedDates: MarkedDates = {};
+      uniqueDates.forEach(date => {
+        newMarkedDates[date] = {
+          selected: false,
+          marked: true,
+          dotColor: '#4CD964', 
+          selectedColor: '#3A3A3A',
+        };
+      });
+      setMarkedDates(newMarkedDates);
+      
+    } catch (error) {
+      console.error("Erro ao buscar datas de treino: ", error);
+      Alert.alert("Erro", "Não foi possível carregar as datas de treino.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Handler para Marcar/Desmarcar
   const handleDayPress = async (day: DateData) => {
@@ -156,7 +168,7 @@ export default function CalendarScreen() {
     }
   };
 
-  // Função de ESCRITA para remover o campo lastCompleted (Desmarcar)
+  // LÓGICA DE DESMARCAR ATUALIZADA
   const updateDayStatus = async (dateString: string, mark: boolean) => {
     if (!user) return;
     setLoading(true);
@@ -169,21 +181,28 @@ export default function CalendarScreen() {
     try {
       if (!mark) { // DESMARCAR
         const routinesSnapshot = await getDocs(routinesQuery);
+        const batch = writeBatch(db); // Usamos um batch
 
         for (const routineDoc of routinesSnapshot.docs) {
-          const routineId = routineDoc.id;
-          const exercisesRef = collection(db, 'artifacts', appId, 'users', userId, 'routines', routineId, 'exercises');
+          // Limpa o 'lastFullyCompleted' da ficha
+          const routineData = routineDoc.data() as Routine;
+          if (routineData.lastFullyCompleted && formatDate(routineData.lastFullyCompleted) === dateString) {
+            batch.update(routineDoc.ref, { lastFullyCompleted: deleteField() });
+          }
+
+          // Limpa o 'lastCompleted' dos exercícios
+          const exercisesRef = collection(routineDoc.ref, 'exercises');
           const exercisesSnapshot = await getDocs(exercisesRef);
 
           for (const exerciseDoc of exercisesSnapshot.docs) {
             const lastCompleted = exerciseDoc.data().lastCompleted;
             if (lastCompleted && formatDate(lastCompleted) === dateString) {
-              await updateDoc(doc(exercisesRef, exerciseDoc.id), {
-                lastCompleted: deleteField()
-              });
+              batch.update(exerciseDoc.ref, { lastCompleted: deleteField() });
             }
           }
         }
+        
+        await batch.commit(); // Executa todas as exclusões
 
         // Remove do estado local
         setMarkedDates(prev => {
@@ -204,22 +223,21 @@ export default function CalendarScreen() {
   };
 
 
-  if (loading) {
+  if (loading) { 
     return (
-      <SafeAreaView style={styles.container}>
-        <ActivityIndicator size="large" color="#4CD964" style={{ flex: 1 }} />
-      </SafeAreaView>
-    );
+       <SafeAreaView style={styles.container}>
+         <ActivityIndicator size="large" color="#4CD964" style={{ flex: 1 }} />
+       </SafeAreaView>
+     );
   }
-
-  if (!user) {
+  if (!user) { 
     return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.content}>
-          <Text style={styles.emptyText}>Faça login para ver seu calendário de treinos.</Text>
-        </View>
-      </SafeAreaView>
-    );
+       <SafeAreaView style={styles.container}>
+         <View style={styles.content}>
+           <Text style={styles.emptyText}>Faça login para ver seu calendário de treinos.</Text>
+         </View>
+       </SafeAreaView>
+     );
   }
 
   return (
@@ -235,6 +253,7 @@ export default function CalendarScreen() {
           monthFormat={'MMMM yyyy'}
           onDayPress={handleDayPress} 
           markedDates={markedDates}
+          key={isFocused.toString()} 
           theme={{
             calendarBackground: '#1E1E1E',
             textSectionTitleColor: '#B0B0B0',
@@ -266,6 +285,7 @@ export default function CalendarScreen() {
   );
 }
 
+// Estilos
 const styles = StyleSheet.create({
   container: {
     flex: 1,

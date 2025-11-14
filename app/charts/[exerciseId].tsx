@@ -1,3 +1,6 @@
+
+
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { collection, getDocs, orderBy, query } from 'firebase/firestore';
@@ -14,16 +17,15 @@ interface Log {
   createdAt: { seconds: number };
 }
 
-// Formato de dado que o gráfico espera
 interface ChartData {
   value: number;
   label: string;
   dataPointText: string;
 }
 
-// Agrupa logs por dia, pegando o maior peso
-const groupLogsByDay = (logs: Log[]): ChartData[] => {
-  const groups: { [key: string]: number } = {}; // Armazena { 'DD/MM': maxWeight }
+// ATUALIZADA: Aceita a unidade
+const groupLogsByDay = (logs: Log[], unit: string): ChartData[] => {
+  const groups: { [key: string]: number } = {}; 
 
   logs.forEach(log => {
     const date = new Date(log.createdAt.seconds * 1000);
@@ -37,11 +39,10 @@ const groupLogsByDay = (logs: Log[]): ChartData[] => {
     }
   });
 
-  // Converte o objeto de grupos em array para o gráfico
   return Object.keys(groups).map(label => ({
     value: groups[label],
     label: label,
-    dataPointText: `${groups[label]}kg`,
+    dataPointText: `${groups[label]} ${unit}`, // Adiciona a unidade
   }));
 };
 
@@ -52,14 +53,31 @@ export default function ChartScreen() {
   const [user, setUser] = useState<User | null>(auth.currentUser);
   const [loading, setLoading] = useState(true);
   const [chartData, setChartData] = useState<ChartData[]>([]);
+  
+  const [weightUnit, setWeightUnit] = useState('kg'); // NOVO ESTADO
 
   // Efeito de Auth
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
+      if(currentUser) {
+        loadWeightUnit(); 
+      }
     });
     return () => unsubscribeAuth();
   }, []);
+  
+  // NOVA FUNÇÃO
+  const loadWeightUnit = async () => {
+    try {
+      const savedUnit = await AsyncStorage.getItem('@EvoFit:weightUnit');
+      if (savedUnit === 'kg' || savedUnit === 'lbs') {
+        setWeightUnit(savedUnit);
+      }
+    } catch (e) {
+      console.error("Erro ao carregar weight unit: ", e);
+    }
+  };
 
   // Efeito para buscar os Logs
   useEffect(() => {
@@ -77,8 +95,8 @@ export default function ChartScreen() {
         const snapshot = await getDocs(q);
         const logsData: Log[] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Log));
 
-        // Aplica a nova lógica de agrupamento
-        const formattedData = groupLogsByDay(logsData);
+        // Passa a unidade para a função de agrupamento
+        const formattedData = groupLogsByDay(logsData, weightUnit);
         
         setChartData(formattedData);
 
@@ -91,7 +109,7 @@ export default function ChartScreen() {
     };
 
     fetchLogs();
-  }, [user, routineId, exerciseId]);
+  }, [user, routineId, exerciseId, weightUnit]); // Recarrega se a unidade mudar
 
   if (loading) {
     return (
@@ -107,7 +125,8 @@ export default function ChartScreen() {
       
       <View style={styles.content}>
         <Text style={styles.title}>Evolução de Carga</Text>
-        <Text style={styles.subtitle}>(Peso Máximo por Dia)</Text>
+        {/* Exibe a unidade de peso */}
+        <Text style={styles.subtitle}>(Peso Máximo por Dia em {weightUnit})</Text>
         <Text style={styles.exerciseName}>{exerciseName}</Text>
 
         {chartData.length < 2 ? (
@@ -119,27 +138,22 @@ export default function ChartScreen() {
             <LineChart
               data={chartData}
               height={250}
-              width={Dimensions.get('window').width - 80} // Largura da tela - padding
+              width={Dimensions.get('window').width - 80} 
               
-              // Estilo da Linha
-              color="#007AFF" // Azul
+              color="#007AFF" 
               thickness={3}
               
-              // Pontos
               dataPointsColor="#FFFFFF"
               dataPointsRadius={5}
               
-              // Texto no Ponto
               dataPointLabelShiftY={-20}
               dataPointLabelColor="#FFFFFF"
               
-              // Eixos
               xAxisColor="#555"
               yAxisColor="#555"
               xAxisLabelColor="#999"
               yAxisLabelColor="#999"
               
-              // Outros
               isAnimated
               curved
               yAxisOffset={0}
@@ -153,6 +167,7 @@ export default function ChartScreen() {
   );
 }
 
+// Estilos
 const styles = StyleSheet.create({
   container: {
     flex: 1,
