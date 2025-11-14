@@ -18,6 +18,24 @@ O **EvoFit** é um aplicativo móvel cross-platform desenvolvido em **React Nati
 * **💾 Backup & Restauração:** Funcionalidades de Exportação e Importação de todo o banco de dados do treino via arquivo JSON.
 * **🗓️ Treino do Dia:** Aba dedicada para focar na rotina selecionada e acompanhar o progresso atual.
 
+---
+
+## 📱 Screenshots do Aplicativo
+
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/f214fcec-a694-49c7-9819-c8bc1c85cfeb" alt="Tela 1: Fichas de Treino" width="150px" />
+  <img src="https://github.com/user-attachments/assets/d19b52a3-29c0-4a63-8945-ec1bd5c2c2da" alt="Tela 2: Exercícios da Ficha" width="150px" />
+  <img src="https://github.com/user-attachments/assets/7307d2ea-2c18-4688-b582-3169de4b1ee5" alt="Tela 3: Detalhes do Exercício" width="150px" />
+  <img src="https://github.com/user-attachments/assets/142e7827-db96-4663-9610-20fa646ad118" alt="Tela 4: Registro de Carga" width="150px" />
+</p>
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/c53f45b1-7225-42f4-acbd-a0f7c51e05df" alt="Tela 5: Calendário e Histórico" width="150px" />
+  <img src="https://github.com/user-attachments/assets/c8553365-0f9c-4b6d-b575-f2df9e3c51dd" alt="Tela 6: Configurações" width="150px" />
+  <img src="https://github.com/user-attachments/assets/86c168fe-f514-4d93-95fc-d591e2c31831" alt="Tela 7: Backup e Restauração" width="150px" />
+</p>
+
+---
+
 ## 🛠️ Tecnologias Utilizadas
 
 | Categoria | Tecnologia | Descrição |
@@ -39,47 +57,60 @@ O **EvoFit** é um aplicativo móvel cross-platform desenvolvido em **React Nati
 
 ### 2. Configuração Local
 
-1.  **Clone o repositório:**
-    ```bash
-    git clone (https://github.com/mayck-eduardo/EvoFit)
-    cd EvoFit
-    ```
+1.  **Clone o repositório:**
+    ```bash
+    git clone ([https://github.com/mayck-eduardo/EvoFit](https://github.com/mayck-eduardo/EvoFit))
+    cd EvoFit
+    ```
 
-2.  **Instale as dependências:**
-    ```bash
-    npm install
-    # OU
-    yarn install
-    ```
+2.  **Instale as dependências:**
+    ```bash
+    npm install
+    # OU
+    yarn install
+    ```
 
-3.  **Instale as dependências do Expo:**
-    ```bash
-    npx expo install firebase @react-native-async-storage/async-storage @react-native-picker/picker @expo-google-fonts/inter react-native-gesture-handler @expo/vector-icons react-native-svg react-native-gifted-charts expo-linear-gradient expo-document-picker expo-sharing expo-file-system
-    ```
+3.  **Instale as dependências do Expo:**
+    ```bash
+    npx expo install firebase @react-native-async-storage/async-storage @react-native-picker/picker @expo-google-fonts/inter react-native-gesture-handler @expo/vector-icons react-native-svg react-native-gifted-charts expo-linear-gradient expo-document-picker expo-sharing expo-file-system
+    ```
 
-### 3. Configuração do Firebase
+### 3. Configuração do Firebase (Uso de Variáveis de Ambiente)
 
-Este projeto é totalmente dependente do Google Firestore para persistência de dados.
+Este projeto é totalmente dependente do Google Firestore para persistência de dados. Por questões de segurança, as credenciais do Firebase são carregadas através de variáveis de ambiente.
 
 1.  **Configure o Projeto no Console do Firebase:**
     * Crie um Projeto e adicione um aplicativo web.
     * Ative o **Cloud Firestore** em modo de teste (ou configure regras de segurança adequadas).
     * Ative a **Autenticação** por **Email/Senha**.
-    * Obtenha o objeto de configuração (`firebaseConfig`).
 
-2.  **Atualize o Arquivo de Configuração:**
-    * Abra o arquivo `firebaseConfig.ts` na raiz do projeto.
-    * Substitua o objeto de configuração com as suas credenciais reais do Firebase:
-    
+2.  **Configuração Local do Ambiente (`.env`):**
+    * Crie um arquivo na raiz do projeto chamado **`.env`**.
+    * Adicione as variáveis de ambiente necessárias (obtidas do console do Firebase) neste arquivo. Lembre-se de adicionar o `.env` ao seu `.gitignore`!
+
+    ```
+    # .env
+    EXPO_PUBLIC_API_KEY="SUA_API_KEY"
+    EXPO_PUBLIC_AUTH_DOMAIN="SEU_AUTH_DOMAIN"
+    EXPO_PUBLIC_PROJECT_ID="SEU_PROJECT_ID"
+    EXPO_PUBLIC_STORAGE_BUCKET="SEU_STORAGE_BUCKET"
+    EXPO_PUBLIC_MESSAGING_SENDER_ID="SEU_MESSAGING_SENDER_ID"
+    EXPO_PUBLIC_APP_ID="SEU_APP_ID"
+    ```
+    > **Nota:** No Expo, as variáveis de ambiente que você deseja acessar no lado do cliente devem ser prefixadas com `EXPO_PUBLIC_`.
+
+3.  **Referência no Código (`firebaseConfig.ts`):**
+    * O arquivo `firebaseConfig.ts` deve utilizar `process.env` para carregar as chaves:
+
     ```typescript
     // firebaseConfig.ts
     const firebaseConfig = {
-      apiKey: "SUA_API_KEY",
-      authDomain: "SEU_AUTH_DOMAIN",
-      projectId: "SEU_PROJECT_ID",
-      storageBucket: "SEU_STORAGE_BUCKET",
-      messagingSenderId: "SEU_MESSAGING_SENDER_ID",
-      appId: "SEU_APP_ID"
+      apiKey: process.env.EXPO_PUBLIC_API_KEY,
+      authDomain: process.env.EXPO_PUBLIC_AUTH_DOMAIN,
+      projectId: process.env.EXPO_PUBLIC_PROJECT_ID,
+      storageBucket: process.env.EXPO_PUBLIC_STORAGE_BUCKET,
+      messagingSenderId: process.env.EXPO_PUBLIC_MESSAGING_SENDER_ID,
+      appId: process.env.EXPO_PUBLIC_APP_ID
     };
     ```
 
@@ -89,11 +120,3 @@ Inicie o servidor de desenvolvimento do Expo:
 
 ```bash
 npx expo start --clear
-```
-## 🤝 Contribuições
-Contribuições, issues e sugestões são bem-vindas! Sinta-se à vontade para abrir uma issue ou enviar um Pull Request para ajudar a melhorar o EvoFit.
-
-## 👨‍💻 Desenvolvedor
-Desenvolvido por Mayck Eduardo (Estudante de Engenharia da Computação).
-
-GitHub: https://github.com/mayck-eduardo
