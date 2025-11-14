@@ -1,3 +1,4 @@
+import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';
 import { getApp, getApps, initializeApp } from 'firebase/app';
 import {
   getAuth,
@@ -5,19 +6,22 @@ import {
   initializeAuth,
 } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
-// 1. 'getStorage' REMOVIDO
-import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';
 
-// ... (firebaseConfig permanece o mesmo)
+// 1. As chaves agora são lidas do 'process.env'
 const firebaseConfig = {
-  apiKey: "AIzaSyD9xHz8kwXMwCryF3_NvLXpx550jqgcbJk",
-  authDomain: "evofit-app-d2e47.firebaseapp.com",
-  projectId: "evofit-app-d2e47",
-  storageBucket: "evofit-app-d2e47.appspot.com", 
-  messagingSenderId: "234654176517",
-  appId: "1:234654176517:web:3fcac7549d50067393536c",
-  measurementId: "G-ZKJVZ1X7K2"
+  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
+  measurementId: process.env.EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID
 };
+
+// 2. Verificação (Opcional, mas boa prática)
+if (!firebaseConfig.apiKey) {
+  console.error("ERRO: Configuração do Firebase não encontrada. Verifique seu arquivo .env");
+}
 
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 const fbConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : firebaseConfig;
@@ -39,8 +43,6 @@ try {
 }
 
 const db = getFirestore(app);
-// 2. 'storage' REMOVIDO
 // setLogLevel('debug');
 
-// 3. 'storage' REMOVIDO da exportação
 export { appId, auth, db };
