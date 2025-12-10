@@ -1,28 +1,29 @@
-// app/(tabs)/calendar.tsx
-
+import { FontAwesome } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useIsFocused } from '@react-navigation/native'; // Importar useIsFocused
+import { useIsFocused } from '@react-navigation/native';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import {
   collection,
   deleteField,
   getDocs,
   query,
-  writeBatch // Importar writeBatch
+  writeBatch
 } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  FlatList,
+  Modal,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View
 } from 'react-native';
 import { Calendar, DateData, LocaleConfig } from 'react-native-calendars';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { appId, auth, db } from '../../firebaseConfig';
 
-// Configuração de localização
 LocaleConfig.locales['br'] = {
   monthNames: ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'],
   monthNamesShort: ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'],
@@ -32,7 +33,6 @@ LocaleConfig.locales['br'] = {
 };
 LocaleConfig.defaultLocale = 'br';
 
-// Interfaces
 interface Routine {
   id: string;
   name: string;
@@ -51,9 +51,20 @@ interface Exercise {
   name: string;
   lastCompleted?: { seconds: number };
 }
+interface DailyHistoryItem {
+  id: string;
+  exerciseName: string;
+  routineName: string;
+}
+
 const formatDate = (timestamp: { seconds: number }): string => {
   const date = new Date(timestamp.seconds * 1000);
-  return date.toISOString().split('T')[0]; // YYYY-MM-DD
+  return date.toISOString().split('T')[0]; 
+};
+
+const formatDateDisplay = (dateString: string): string => {
+  const [year, month, day] = dateString.split('-');
+  return `${day}/${month}/${year}`;
 };
 
 export default function CalendarScreen() {
@@ -62,7 +73,13 @@ export default function CalendarScreen() {
   const [markedDates, setMarkedDates] = useState<MarkedDates>({});
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   
-  const isFocused = useIsFocused(); // Hook para saber se a aba está em foco
+  const [detailsModalVisible, setDetailsModalVisible] = useState(false);
+  const [dailyHistory, setDailyHistory] = useState<DailyHistoryItem[]>([]);
+  const [loadingDetails, setLoadingDetails] = useState(false);
+  
+  const [currentPlanId, setCurrentPlanId] = useState('default');
+
+  const isFocused = useIsFocused();
 
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
@@ -71,40 +88,43 @@ export default function CalendarScreen() {
     return () => unsubscribeAuth();
   }, []);
 
-  // Efeito para buscar as datas
   useEffect(() => {
-    // Só busca se o usuário estiver logado E a tela estiver em foco
     if (user && isFocused) {
       fetchWorkoutDates();
     } else if (!user) {
-      // Limpa as datas se o usuário deslogar
       setLoading(false);
       setMarkedDates({}); 
     }
-  }, [user, isFocused]); // Depende do foco da tela
+  }, [user, isFocused]);
 
-  // LÓGICA DE BUSCA ATUALIZADA
   const fetchWorkoutDates = async () => {
     if (!user) return;
     setLoading(true);
     
     try {
-      // 1. Lê a preferência do usuário
       const mode = await AsyncStorage.getItem('@EvoFit:completionMode') || 'any';
+      
+      // 1. Carrega o plano
+      const savedPlan = await AsyncStorage.getItem('@EvoFit:currentPlanId');
+      const planId = savedPlan || 'default';
+      setCurrentPlanId(planId);
+
       const userId = user.uid;
       const uniqueDates = new Set<string>();
       
-      const routinesQuery = query(
-        collection(db, 'artifacts', appId, 'users', userId, 'routines')
-      );
+      // 2. Define query baseada no plano
+      let routinesQuery;
+      if (planId === 'default') {
+        routinesQuery = query(collection(db, 'artifacts', appId, 'users', userId, 'routines'));
+      } else {
+        routinesQuery = query(collection(db, 'artifacts', appId, 'users', userId, 'plans', planId, 'routines'));
+      }
+
       const routinesSnapshot = await getDocs(routinesQuery);
 
       if (mode === 'any') {
-        // Lógica Antiga (Modo "Qualquer"): Checa todos os exercícios
         for (const routineDoc of routinesSnapshot.docs) {
-          const exercisesQuery = query(
-            collection(routineDoc.ref, 'exercises')
-          );
+          const exercisesQuery = query(collection(routineDoc.ref, 'exercises'));
           const exercisesSnapshot = await getDocs(exercisesQuery);
           exercisesSnapshot.forEach(doc => {
             const exercise = doc.data() as Exercise;
@@ -114,7 +134,6 @@ export default function CalendarScreen() {
           });
         }
       } else {
-        // Lógica Nova (Modo "Completo"): Checa apenas o campo da ficha
         routinesSnapshot.forEach(doc => {
           const routine = doc.data() as Routine;
           if (routine.lastFullyCompleted) {
@@ -123,7 +142,6 @@ export default function CalendarScreen() {
         });
       }
 
-      // Formatar para o estado do calendário
       const newMarkedDates: MarkedDates = {};
       uniqueDates.forEach(date => {
         newMarkedDates[date] = {
@@ -136,61 +154,114 @@ export default function CalendarScreen() {
       setMarkedDates(newMarkedDates);
       
     } catch (error) {
-      console.error("Erro ao buscar datas de treino: ", error);
-      Alert.alert("Erro", "Não foi possível carregar as datas de treino.");
+      console.error("Erro ao buscar datas: ", error);
     } finally {
       setLoading(false);
     }
   };
 
-  // Handler para Marcar/Desmarcar
   const handleDayPress = async (day: DateData) => {
     const dateString = day.dateString;
     setSelectedDay(dateString);
 
-    const isCurrentlyMarked = !!markedDates[dateString];
-
-    if (isCurrentlyMarked) {
-      Alert.alert(
-        "Desmarcar Treino",
-        `Deseja remover o(s) registro(s) de treino para ${dateString}?`,
-        [
-          { text: "Cancelar", style: "cancel", onPress: () => setSelectedDay(null) },
-          { text: "Remover", style: "destructive", onPress: () => updateDayStatus(dateString, false) },
-        ]
-      );
+    if (markedDates[dateString]) {
+      await fetchDetailsForDate(dateString);
     } else {
       Alert.alert(
-        "Marcar Treino",
-        `Para marcar um treino, vá à aba "Treino do Dia" e complete os exercícios.`,
+        "Sem Treino",
+        `Nenhum treino registrado em ${formatDateDisplay(dateString)}.`,
         [{ text: "OK", onPress: () => setSelectedDay(null) }]
       );
     }
   };
 
-  // LÓGICA DE DESMARCAR ATUALIZADA
+  const fetchDetailsForDate = async (dateString: string) => {
+    if (!user) return;
+    setLoadingDetails(true);
+    setDetailsModalVisible(true);
+    
+    const userId = user.uid;
+    const historyItems: DailyHistoryItem[] = [];
+
+    try {
+      // 3. Usa o currentPlanId carregado no estado
+      let routinesQuery;
+      if (currentPlanId === 'default') {
+        routinesQuery = query(collection(db, 'artifacts', appId, 'users', userId, 'routines'));
+      } else {
+        routinesQuery = query(collection(db, 'artifacts', appId, 'users', userId, 'plans', currentPlanId, 'routines'));
+      }
+
+      const routinesSnapshot = await getDocs(routinesQuery);
+
+      for (const routineDoc of routinesSnapshot.docs) {
+        const routineData = routineDoc.data() as Routine;
+        const exercisesQuery = query(collection(routineDoc.ref, 'exercises'));
+        const exercisesSnapshot = await getDocs(exercisesQuery);
+
+        exercisesSnapshot.forEach(exDoc => {
+          const exercise = exDoc.data() as Exercise;
+          if (exercise.lastCompleted && formatDate(exercise.lastCompleted) === dateString) {
+            historyItems.push({
+              id: exDoc.id,
+              exerciseName: exercise.name,
+              routineName: routineData.name
+            });
+          }
+        });
+      }
+      setDailyHistory(historyItems);
+    } catch (error) {
+      console.error("Erro ao buscar detalhes:", error);
+      Alert.alert("Erro", "Não foi possível carregar os detalhes.");
+    } finally {
+      setLoadingDetails(false);
+    }
+  };
+
+  const handleUnmarkDay = () => {
+    if (!selectedDay) return;
+    Alert.alert(
+      "Apagar Registros",
+      `Deseja remover todos os registros de conclusão do dia ${formatDateDisplay(selectedDay)}?`,
+      [
+        { text: "Cancelar", style: "cancel" },
+        { 
+          text: "Apagar", 
+          style: "destructive",
+          onPress: async () => {
+            await updateDayStatus(selectedDay, false);
+            setDetailsModalVisible(false);
+          }
+        },
+      ]
+    );
+  };
+
   const updateDayStatus = async (dateString: string, mark: boolean) => {
     if (!user) return;
     setLoading(true);
     const userId = user.uid;
 
-    const routinesQuery = query(
-      collection(db, 'artifacts', appId, 'users', userId, 'routines')
-    );
+    // 4. Usa o currentPlanId carregado no estado
+    let routinesQuery;
+    if (currentPlanId === 'default') {
+      routinesQuery = query(collection(db, 'artifacts', appId, 'users', userId, 'routines'));
+    } else {
+      routinesQuery = query(collection(db, 'artifacts', appId, 'users', userId, 'plans', currentPlanId, 'routines'));
+    }
 
     try {
-      if (!mark) { // DESMARCAR
+      if (!mark) { 
         const routinesSnapshot = await getDocs(routinesQuery);
-        const batch = writeBatch(db); // Usamos um batch
+        const batch = writeBatch(db);
 
         for (const routineDoc of routinesSnapshot.docs) {
-          // Limpa o 'lastFullyCompleted' da ficha
           const routineData = routineDoc.data() as Routine;
           if (routineData.lastFullyCompleted && formatDate(routineData.lastFullyCompleted) === dateString) {
             batch.update(routineDoc.ref, { lastFullyCompleted: deleteField() });
           }
 
-          // Limpa o 'lastCompleted' dos exercícios
           const exercisesRef = collection(routineDoc.ref, 'exercises');
           const exercisesSnapshot = await getDocs(exercisesRef);
 
@@ -202,20 +273,17 @@ export default function CalendarScreen() {
           }
         }
         
-        await batch.commit(); // Executa todas as exclusões
-
-        // Remove do estado local
+        await batch.commit();
         setMarkedDates(prev => {
           const newDates = { ...prev };
           delete newDates[dateString];
           return newDates;
         });
-        Alert.alert("Sucesso", `Registros de ${dateString} removidos.`);
       }
       
     } catch (e) {
       console.error(e);
-      Alert.alert("Erro de escrita", "Não foi possível atualizar a data.");
+      Alert.alert("Erro", "Não foi possível atualizar.");
     } finally {
       setLoading(false);
       setSelectedDay(null);
@@ -223,7 +291,7 @@ export default function CalendarScreen() {
   };
 
 
-  if (loading) { 
+  if (loading && !detailsModalVisible) { 
     return (
        <SafeAreaView style={styles.container}>
          <ActivityIndicator size="large" color="#4CD964" style={{ flex: 1 }} />
@@ -234,7 +302,7 @@ export default function CalendarScreen() {
     return (
        <SafeAreaView style={styles.container}>
          <View style={styles.content}>
-           <Text style={styles.emptyText}>Faça login para ver seu calendário de treinos.</Text>
+           <Text style={styles.emptyText}>Faça login para ver seu calendário.</Text>
          </View>
        </SafeAreaView>
      );
@@ -242,9 +310,56 @@ export default function CalendarScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={detailsModalVisible}
+        onRequestClose={() => setDetailsModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>
+              {selectedDay ? formatDateDisplay(selectedDay) : 'Detalhes'}
+            </Text>
+            
+            {loadingDetails ? (
+              <ActivityIndicator size="large" color="#007AFF" style={{ margin: 20 }} />
+            ) : (
+              <FlatList
+                data={dailyHistory}
+                keyExtractor={(item) => item.id}
+                style={{ maxHeight: 300, width: '100%' }}
+                renderItem={({ item }) => (
+                  <View style={styles.historyItem}>
+                    <View style={styles.historyDot} />
+                    <View>
+                      <Text style={styles.historyExercise}>{item.exerciseName}</Text>
+                      <Text style={styles.historyRoutine}>{item.routineName}</Text>
+                    </View>
+                  </View>
+                )}
+                ListEmptyComponent={
+                  <Text style={styles.emptyText}>Nenhum detalhe encontrado.</Text>
+                }
+              />
+            )}
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={styles.closeButton} onPress={() => setDetailsModalVisible(false)}>
+                <Text style={styles.closeButtonText}>Fechar</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity style={styles.deleteButton} onPress={handleUnmarkDay}>
+                <FontAwesome name="trash" size={20} color="#FF4500" />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       <View style={styles.header}>
-        <Text style={styles.title}>Frequência de Treino</Text>
-        <Text style={styles.subtitle}>Dias marcados indicam que um exercício foi completado.</Text>
+        <Text style={styles.title}>Histórico</Text>
+        <Text style={styles.subtitle}>Toque em um dia verde para ver o que foi treinado.</Text>
       </View>
 
       <View style={styles.calendarWrapper}>
@@ -278,14 +393,13 @@ export default function CalendarScreen() {
 
       <View style={styles.legend}>
         <View style={[styles.dot, { backgroundColor: '#4CD964' }]} />
-        <Text style={styles.legendText}>Dia de Treino Registrado</Text>
+        <Text style={styles.legendText}>Dia com Treino Concluído</Text>
       </View>
 
     </SafeAreaView>
   );
 }
 
-// Estilos
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -315,8 +429,8 @@ const styles = StyleSheet.create({
   emptyText: {
     color: '#B0B0B0',
     textAlign: 'center',
-    marginTop: 50,
-    fontSize: 16,
+    marginTop: 10,
+    fontSize: 14,
   },
   calendarWrapper: {
     marginHorizontal: 15,
@@ -347,5 +461,72 @@ const styles = StyleSheet.create({
   legendText: {
     color: '#FFFFFF',
     fontSize: 14,
+  },
+  
+  // Estilos do Modal
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+  },
+  modalContent: {
+    backgroundColor: '#2A2A2A',
+    borderRadius: 12,
+    padding: 20,
+    width: '85%',
+    maxHeight: '60%',
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    marginBottom: 20,
+    textAlign: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#444',
+    paddingBottom: 10,
+  },
+  historyItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 15,
+    backgroundColor: '#1E1E1E',
+  },
+  historyDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#007AFF',
+    marginRight: 15,
+  },
+  historyExercise: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  historyRoutine: {
+    color: '#B0B0B0',
+    fontSize: 12,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#444',
+    paddingTop: 15,
+  },
+  closeButton: {
+    padding: 10,
+  },
+  closeButtonText: {
+    color: '#007AFF',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  deleteButton: {
+    padding: 10,
   }
 });
