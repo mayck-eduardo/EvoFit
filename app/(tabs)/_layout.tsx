@@ -1,19 +1,18 @@
-// app/(tabs)/_layout.tsx
-
 import { FontAwesome } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useIsFocused } from '@react-navigation/native';
-import { Tabs } from 'expo-router';
+import { Tabs, useNavigationContainerRef } from 'expo-router';
 import React, { useEffect, useState } from 'react';
+import { useTheme } from '../../context/ThemeContext';
 
 export default function TabLayout() {
+  const { colors, isDark } = useTheme();
   const [showReports, setShowReports] = useState(true);
   const isFocused = useIsFocused();
 
   useEffect(() => {
     const loadPrefs = async () => {
       const val = await AsyncStorage.getItem('@EvoFit:showReportsTab');
-      // Se for nulo (padrão), é true
       setShowReports(val === null ? true : val === 'true');
     };
     if (isFocused) loadPrefs();
@@ -22,71 +21,72 @@ export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        headerShown: false, 
-        tabBarActiveTintColor: '#007AFF', 
-        tabBarInactiveTintColor: '#8E8E93', 
+        headerShown: false,
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: isDark ? '#666' : '#999',
         tabBarStyle: {
-          backgroundColor: '#1E1E1E', 
-          borderTopColor: '#3A3A3A', 
+          backgroundColor: colors.tabBarBg,
+          borderTopColor: colors.tabBarBorder,
+          borderTopWidth: 1,
+          height: 60,
+          paddingTop: 4,
         },
         tabBarLabelStyle: {
-          fontSize: 12,
+          fontSize: 11,
           fontWeight: '600',
-        }
+          marginTop: 2,
+        },
+        tabBarItemStyle: {
+          paddingVertical: 4,
+        },
       }}
     >
       <Tabs.Screen
-        name="index" 
+        name="index"
         options={{
-          title: 'Treino do Dia', 
+          title: 'Treino',
           tabBarIcon: ({ color, size }) => (
-            <FontAwesome name="play-circle" size={size} color={color} /> 
+            <FontAwesome name="play-circle" size={size} color={color} />
           ),
         }}
       />
-      
       <Tabs.Screen
-        name="edit" 
+        name="edit"
         options={{
-          title: 'Fichas', 
+          title: 'Fichas',
           tabBarIcon: ({ color, size }) => (
-            <FontAwesome name="list-alt" size={size} color={color} /> 
+            <FontAwesome name="list-alt" size={size} color={color} />
           ),
         }}
       />
-
       <Tabs.Screen
-        name="reports" 
+        name="reports"
         options={{
-          title: 'Relatórios', 
-          // Se showReports for false, escondemos o botão da tab
-          href: showReports ? '/reports' : null, 
+          title: 'Relatórios',
+          href: showReports ? '/reports' : null,
           tabBarIcon: ({ color, size }) => (
-            <FontAwesome name="bar-chart" size={size} color={color} /> 
+            <FontAwesome name="bar-chart" size={size} color={color} />
           ),
         }}
       />
-      
       <Tabs.Screen
-        name="calendar" 
+        name="calendar"
         options={{
-          title: 'Calendário', 
+          title: 'Calendário',
           tabBarIcon: ({ color, size }) => (
-            <FontAwesome name="calendar" size={size} color={color} /> 
+            <FontAwesome name="calendar" size={size} color={color} />
           ),
         }}
       />
-      
       <Tabs.Screen
-        name="settings" 
+        name="settings"
         options={{
-          title: 'Config.', 
+          title: 'Ajustes',
           tabBarIcon: ({ color, size }) => (
-            <FontAwesome name="cog" size={size} color={color} /> 
+            <FontAwesome name="cog" size={size} color={color} />
           ),
         }}
       />
-      
     </Tabs>
   );
 }

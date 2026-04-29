@@ -1,14 +1,20 @@
-
-
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { collection, getDocs, orderBy, query } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Dimensions, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Dimensions,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { LineChart } from 'react-native-gifted-charts';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { appId, auth, db } from '../../firebaseConfig';
+import { calculateEpley1RM } from '../utils/formulas';
 
 interface Log {
   id: string;
@@ -23,26 +29,18 @@ interface ChartData {
   dataPointText: string;
 }
 
-// ATUALIZADA: Aceita a unidade
 const groupLogsByDay = (logs: Log[], unit: string): ChartData[] => {
-  const groups: { [key: string]: number } = {}; 
-
-  logs.forEach(log => {
+  const groups: { [key: string]: number } = {};
+  logs.forEach((log) => {
     const date = new Date(log.createdAt.seconds * 1000);
-    const day = date.getDate();
-    const month = date.getMonth() + 1;
-    const label = `${day}/${month}`;
-    
-    const currentMaxWeight = groups[label] || 0;
-    if (log.weight > currentMaxWeight) {
-      groups[label] = log.weight;
-    }
+    const label = `${date.getDate()}/${date.getMonth() + 1}`;
+    const currentMax = groups[label] || 0;
+    if (log.weight > currentMax) groups[label] = log.weight;
   });
-
-  return Object.keys(groups).map(label => ({
+  return Object.keys(groups).map((label) => ({
     value: groups[label],
-    label: label,
-    dataPointText: `${groups[label]} ${unit}`, // Adiciona a unidade
+    label,
+    dataPointText: `${groups[label]}`,
   }));
 };
 
@@ -53,33 +51,21 @@ export default function ChartScreen() {
   const [user, setUser] = useState<User | null>(auth.currentUser);
   const [loading, setLoading] = useState(true);
   const [chartData, setChartData] = useState<ChartData[]>([]);
-  
-  const [weightUnit, setWeightUnit] = useState('kg'); // NOVO ESTADO
+  const [weightUnit, setWeightUnit] = useState('kg');
+  const [maxValue, setMaxValue] = useState(0);
 
-  // Efeito de Auth
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
-      if(currentUser) {
-        loadWeightUnit(); 
+      if (currentUser) {
+        AsyncStorage.getItem('@EvoFit:weightUnit').then((u) => {
+          if (u === 'kg' || u === 'lbs') setWeightUnit(u);
+        });
       }
     });
     return () => unsubscribeAuth();
   }, []);
-  
-  // NOVA FUNÇÃO
-  const loadWeightUnit = async () => {
-    try {
-      const savedUnit = await AsyncStorage.getItem('@EvoFit:weightUnit');
-      if (savedUnit === 'kg' || savedUnit === 'lbs') {
-        setWeightUnit(savedUnit);
-      }
-    } catch (e) {
-      console.error("Erro ao carregar weight unit: ", e);
-    }
-  };
 
-  // Efeito para buscar os Logs
   useEffect(() => {
     if (!user || !routineId || !exerciseId) {
       setLoading(false);
@@ -89,76 +75,83 @@ export default function ChartScreen() {
 
     const fetchLogs = async () => {
       try {
-        const logsCollection = collection(db, 'artifacts', appId, 'users', user.uid, 'routines', routineId as string, 'exercises', exerciseId as string, 'logs');
+        const logsCollection = collection(
+          db,
+          'artifacts',
+          appId,
+          'users',
+          user.uid,
+          'routines',
+          routineId as string,
+          'exercises',
+          exerciseId as string,
+          'logs'
+        );
         const q = query(logsCollection, orderBy('createdAt', 'asc'));
-        
         const snapshot = await getDocs(q);
-        const logsData: Log[] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Log));
+        const logsData = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }) as Log);
 
-        // Passa a unidade para a função de agrupamento
         const formattedData = groupLogsByDay(logsData, weightUnit);
-        
         setChartData(formattedData);
-
+        if (formattedData.length > 0) {
+          setMaxValue(Math.max(...formattedData.map((d) => d.value)));
+        }
       } catch (error) {
-        console.error("Erro ao buscar logs para gráfico: ", error);
-        Alert.alert("Erro", "Não foi possível carregar o gráfico.");
+        console.error('Erro ao buscar logs:', error);
+        Alert.alert('Erro', 'Não foi possível carregar o gráfico.');
       } finally {
         setLoading(false);
       }
     };
 
     fetchLogs();
-  }, [user, routineId, exerciseId, weightUnit]); // Recarrega se a unidade mudar
+  }, [user, routineId, exerciseId, weightUnit]);
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.container}>
-        <ActivityIndicator size="large" color="#FFFFFF" style={{ flex: 1 }} />
-      </SafeAreaView>
+      <View style={styles.container}>
+        <ActivityIndicator size="large" color="#EF4444" />
+      </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom', 'left', 'right']}>
-      <Stack.Screen options={{ title: exerciseName as string || 'Gráfico' }} />
-      
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <Stack.Screen options={{ title: (exerciseName as string) || 'Gráfico' }} />
+
       <View style={styles.content}>
         <Text style={styles.title}>Evolução de Carga</Text>
-        {/* Exibe a unidade de peso */}
-        <Text style={styles.subtitle}>(Peso Máximo por Dia em {weightUnit})</Text>
         <Text style={styles.exerciseName}>{exerciseName}</Text>
 
         {chartData.length < 2 ? (
-          <Text style={styles.emptyText}>
-            Você precisa de pelo menos 2 registros em dias diferentes para montar um gráfico.
-          </Text>
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyEmoji}>📊</Text>
+            <Text style={styles.emptyText}>
+              Registre pelo menos 2 séries em dias diferentes para visualizar o gráfico.
+            </Text>
+          </View>
         ) : (
           <View style={styles.chartContainer}>
+            <View style={styles.chartBadge}>
+              <Text style={styles.chartBadgeText}>
+                Recorde: {maxValue} {weightUnit}
+              </Text>
+            </View>
             <LineChart
               data={chartData}
-              height={250}
-              width={Dimensions.get('window').width - 80} 
-              
-              color="#007AFF" 
+              height={220}
+              width={Dimensions.get('window').width - 64}
+              color="#EF4444"
               thickness={3}
-              
-              dataPointsColor="#FFFFFF"
-              dataPointsRadius={5}
-              
-              dataPointLabelShiftY={-20}
-              dataPointLabelColor="#FFFFFF"
-              
-              xAxisColor="#555"
-              yAxisColor="#555"
-              xAxisLabelColor="#999"
-              yAxisLabelColor="#999"
-              
+              dataPointsColor="#FFF"
+              xAxisColor="#333"
+              yAxisColor="#333"
               isAnimated
               curved
               yAxisOffset={0}
-              startFillColor="rgba(0,122,255,0.2)"
-              endFillColor="rgba(0,122,255,0.01)"
+              startFillColor="rgba(239,68,68,0.25)"
+              endFillColor="rgba(239,68,68,0.02)"
+              spacing={50}
             />
           </View>
         )}
@@ -167,47 +160,29 @@ export default function ChartScreen() {
   );
 }
 
-// Estilos
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#121212',
-  },
-  content: {
-    flex: 1,
-    padding: 20,
-    alignItems: 'center',
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#B0B0B0',
-    marginBottom: 10,
-    fontStyle: 'italic',
-  },
-  exerciseName: {
-    fontSize: 18,
-    color: '#FFFFFF',
-    fontWeight: '600',
-    marginBottom: 40,
-  },
+  container: { flex: 1, backgroundColor: '#121212' },
+  content: { flex: 1, padding: 20, alignItems: 'center' },
+  title: { fontSize: 28, fontWeight: '700', color: '#FFFFFF', marginBottom: 6 },
+  exerciseName: { fontSize: 16, color: '#888', marginBottom: 32 },
   chartContainer: {
     backgroundColor: '#1E1E1E',
-    padding: 20,
-    borderRadius: 12,
+    padding: 16,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#333',
+    borderColor: '#2A2A2A',
     alignItems: 'center',
+    width: '100%',
   },
-  emptyText: {
-    color: '#B0B0B0',
-    textAlign: 'center',
-    marginTop: 50,
-    fontSize: 16,
+  chartBadge: {
+    backgroundColor: '#2A1A1A',
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 8,
+    marginBottom: 16,
   },
+  chartBadgeText: { color: '#EF4444', fontSize: 14, fontWeight: '600' },
+  emptyState: { alignItems: 'center', marginTop: 40, paddingHorizontal: 40 },
+  emptyEmoji: { fontSize: 48, marginBottom: 16 },
+  emptyText: { color: '#888', fontSize: 14, textAlign: 'center' },
 });

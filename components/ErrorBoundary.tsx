@@ -25,7 +25,7 @@ export default class ErrorBoundary extends React.Component<React.PropsWithChildr
   // 2. AQUI ESTÁ A CORREÇÃO:
   handleReload = () => {
     // Mudado de Updates.reloadAsync() para Updates.reload()
-    Updates.reload();
+    Updates.reloadAsync();
   };
 
   render() {
