@@ -1,7 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FontAwesome } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import * as Notifications from 'expo-notifications';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import {
@@ -30,21 +29,11 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import NumberPad from '../../components/NumberPad';
 import RestTimerOverlay from '../../components/RestTimerOverlay';
 import { appId, auth, db } from '../../firebaseConfig';
-import { calculateEpley1RM } from '../utils/formulas';
-
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-});
+import { calculateEpley1RM } from '../../utils/formulas';
 
 interface Log {
   id: string;
@@ -57,6 +46,7 @@ interface Log {
 export default function LogExerciseScreen() {
   const params = useLocalSearchParams();
   const { exerciseId, exerciseName, routineId, exerciseSets } = params;
+  const insets = useSafeAreaInsets();
 
   const [user, setUser] = useState<User | null>(auth.currentUser);
   const [logs, setLogs] = useState<Log[]>([]);
@@ -73,7 +63,6 @@ export default function LogExerciseScreen() {
   const [timeLeft, setTimeLeft] = useState(90);
   const [timerEndTime, setTimerEndTime] = useState<number | null>(null);
   const [isTimerActive, setIsTimerActive] = useState(false);
-  const [notificationIds, setNotificationIds] = useState<string[]>([]);
   const [weightUnit, setWeightUnit] = useState<'kg' | 'lbs'>('kg');
   const [timerSound, setTimerSound] = useState(true);
 
@@ -168,48 +157,12 @@ export default function LogExerciseScreen() {
     setTimeLeft(timerDefault);
     setTimerEndTime(endTime);
     setIsTimerActive(true);
-
-    try {
-      const ids: string[] = [];
-      const intervals = [60, 30];
-      for (const interval of intervals) {
-        if (timerDefault > interval) {
-          const id = await Notifications.scheduleNotificationAsync({
-            content: {
-              title: 'EvoFit: Descanso',
-              body: `${interval}s restantes...`,
-              sound: false,
-              vibrate: [0, 100],
-            },
-            trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: timerDefault - interval, repeats: false },
-          });
-          ids.push(id);
-        }
-      }
-      const finalId = await Notifications.scheduleNotificationAsync({
-        content: {
-          title: 'EvoFit: Descanso Concluído!',
-          body: `Hora da próxima série de ${exerciseName}.`,
-          sound: timerSound,
-          vibrate: timerSound ? undefined : [0, 250, 250, 250],
-        },
-        trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: timerDefault, repeats: false },
-      });
-      ids.push(finalId);
-      setNotificationIds(ids);
-    } catch (e) {
-      console.error('Erro ao agendar notificação:', e);
-    }
   };
 
   const stopTimer = async () => {
     setIsTimerActive(false);
     setTimerEndTime(null);
     setTimeLeft(timerDefault);
-    for (const id of notificationIds) {
-      await Notifications.cancelScheduledNotificationAsync(id);
-    }
-    setNotificationIds([]);
   };
 
   const addTime = (seconds: number) => {
@@ -374,7 +327,7 @@ export default function LogExerciseScreen() {
         <ScrollView
           style={{ flex: 1 }}
           keyboardShouldPersistTaps="handled"
-          contentContainerStyle={{ paddingBottom: 20 }}
+          contentContainerStyle={{ paddingBottom: 20 + insets.bottom }}
         >
           {/* Info Card */}
           <View style={styles.infoCard}>

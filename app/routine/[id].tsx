@@ -30,7 +30,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { appId, auth, db } from '../../firebaseConfig';
 
 interface Exercise {
@@ -41,11 +41,12 @@ interface Exercise {
   lastCompleted?: { seconds: number };
 }
 
-const EXERCISE_ICONS = ['dumbbell', 'flag', 'star', 'fire', 'trophy', 'bolt', 'heart', 'medkit'];
+const EXERCISE_ICONS = ['heartbeat', 'flag', 'star', 'fire', 'trophy', 'bolt', 'heart', 'medkit'];
 
 export default function RoutineScreen() {
   const params = useLocalSearchParams();
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
   const { id: routineId, name: routineName } = params;
 
   const [user, setUser] = useState<User | null>(auth.currentUser);
@@ -270,7 +271,7 @@ export default function RoutineScreen() {
             </View>
           );
         }}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 16 }]}
         ListEmptyComponent={
           <View style={styles.emptyState}>
             <Text style={styles.emptyEmoji}>💪</Text>

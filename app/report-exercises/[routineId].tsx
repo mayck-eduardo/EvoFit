@@ -4,15 +4,16 @@ import { onAuthStateChanged, User } from 'firebase/auth';
 import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import AuthForm from '../../components/AuthForm';
 import { appId, auth, db } from '../../firebaseConfig';
 
 interface Exercise { id: string; name: string; order: number; }
 
-const EXERCISE_ICONS = ['dumbbell', 'flag', 'star', 'fire', 'trophy', 'bolt', 'heart', 'medkit'];
+const EXERCISE_ICONS = ['heartbeat', 'flag', 'star', 'fire', 'trophy', 'bolt', 'heart', 'medkit'];
 
 export default function ReportExercisesScreen() {
+  const insets = useSafeAreaInsets();
   const [user, setUser] = useState<User | null>(auth.currentUser);
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [loading, setLoading] = useState(true);
@@ -61,7 +62,7 @@ export default function ReportExercisesScreen() {
             <FontAwesome name="line-chart" size={18} color="#555" />
           </Pressable>
         )}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 16 }]}
         ListEmptyComponent={<Text style={styles.emptyText}>Nenhum exercício nesta ficha.</Text>}
       />
     </SafeAreaView>

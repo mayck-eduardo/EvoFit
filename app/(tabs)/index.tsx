@@ -28,7 +28,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import AuthForm from '../../components/AuthForm';
 import { appId, auth, db } from '../../firebaseConfig';
 import { useTheme } from '../../context/ThemeContext';
@@ -71,6 +71,7 @@ export default function WorkoutScreen() {
   const { colors, isDark } = useTheme();
   const navigation = useNavigation();
   const isFocused = useIsFocused();
+  const insets = useSafeAreaInsets();
   const progressAnim = useRef(new Animated.Value(0)).current;
 
   const [user, setUser] = useState<User | null>(auth.currentUser);
@@ -280,9 +281,11 @@ export default function WorkoutScreen() {
               }}
               style={styles.picker}
               dropdownIconColor={colors.primary}
+              mode="dropdown"
+              itemStyle={{ color: '#1F2937', backgroundColor: '#FFFFFF' }}
             >
               {routines.map((r) => (
-                <Picker.Item key={r.id} label={r.name} value={r.id} color={colors.text} />
+                <Picker.Item key={r.id} label={r.name} value={r.id} color="#1F2937" />
               ))}
             </Picker>
           </View>
@@ -332,32 +335,35 @@ export default function WorkoutScreen() {
           renderItem={({ item, index }) => {
             const completed = isToday(item.lastCompleted);
             return (
-              <Link
-                href={
-                  simpleMode
-                    ? undefined
-                    : ({
-                        pathname: `/log-exercise/${item.id}`,
-                        params: {
-                          exerciseName: item.name,
-                          routineId: selectedRoutineId,
-                          exerciseSets: item.sets,
-                        },
-                      } as any)
-                }
-                asChild
+              <View
+                style={[
+                  styles.exerciseCard,
+                  { backgroundColor: colors.card, borderColor: colors.cardBorder },
+                  completed && { backgroundColor: colors.successBg, borderColor: colors.success },
+                ]}
               >
                 <Pressable
-                  style={({ pressed }) => [
-                    styles.exerciseCard,
-                    { backgroundColor: colors.card, borderColor: colors.cardBorder },
-                    completed && { backgroundColor: colors.successBg, borderColor: colors.success },
-                    pressed && { opacity: 0.85 },
-                  ]}
+                  style={styles.checkButton}
+                  onPress={() => handleToggleCheck(item)}
+                  disabled={actionLoading === item.id}
                 >
-                  <View style={[styles.exerciseNumber, { backgroundColor: colors.surfaceAlt }]}>
-                    <Text style={[styles.exerciseNumberText, { color: colors.textSecondary }]}>{index + 1}</Text>
-                  </View>
+                  {actionLoading === item.id ? (
+                    <ActivityIndicator size="small" color={colors.success} />
+                  ) : (
+                    <View
+                      style={[
+                        styles.checkCircle,
+                        { borderColor: isDark ? '#444' : colors.cardBorder },
+                        completed && { backgroundColor: colors.success, borderColor: colors.success },
+                      ]}
+                    >
+                      {completed && (
+                        <Text style={styles.checkMark}>✓</Text>
+                      )}
+                    </View>
+                  )}
+                </Pressable>
+                {simpleMode ? (
                   <View style={styles.exerciseInfo}>
                     <Text
                       style={[
@@ -368,34 +374,37 @@ export default function WorkoutScreen() {
                     >
                       {item.name}
                     </Text>
-                    <Text style={[styles.exerciseSets, { color: colors.textSecondary }]}>{item.sets}</Text>
                   </View>
-                  <Pressable
-                    style={styles.checkButton}
-                    onPress={() => handleToggleCheck(item)}
-                    disabled={actionLoading === item.id}
+                ) : (
+                  <Link
+                    href={{
+                      pathname: `/log-exercise/${item.id}`,
+                      params: {
+                        exerciseName: item.name,
+                        routineId: selectedRoutineId,
+                        exerciseSets: item.sets,
+                      },
+                    } as any}
+                    asChild
                   >
-                    {actionLoading === item.id ? (
-                      <ActivityIndicator size="small" color={colors.success} />
-                    ) : (
-                      <View
+                    <Pressable style={styles.exerciseInfo}>
+                      <Text
                         style={[
-                          styles.checkCircle,
-                          { borderColor: isDark ? '#444' : colors.cardBorder },
-                          completed && { backgroundColor: colors.success, borderColor: colors.success },
+                          styles.exerciseName,
+                          { color: colors.text },
+                          completed && { color: colors.textMuted, textDecorationLine: 'line-through' },
                         ]}
                       >
-                        {completed && (
-                          <Text style={styles.checkMark}>✓</Text>
-                        )}
-                      </View>
-                    )}
-                  </Pressable>
-                </Pressable>
-              </Link>
+                        {item.name}
+                      </Text>
+                    </Pressable>
+                  </Link>
+                )}
+                <Text style={[styles.exerciseSets, { color: colors.textSecondary }]}>{item.sets}</Text>
+              </View>
             );
           }}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 16 }]}
           ListEmptyComponent={
             <View style={styles.emptyState}>
               <Text style={styles.emptyStateEmoji}>🏋️</Text>
@@ -443,31 +452,18 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     borderWidth: 1,
     borderColor: '#2A2A2A',
-    padding: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
   },
   exerciseCardCompleted: {
     backgroundColor: '#1A2E1A',
     borderColor: '#2D5A2D',
   },
-  exerciseNumber: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: '#2C2C2C',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  exerciseNumberText: { color: '#888', fontSize: 14, fontWeight: '700' },
-  exerciseInfo: { flex: 1 },
-  exerciseName: { fontSize: 16, fontWeight: '600', color: '#FFFFFF', marginBottom: 2 },
-  exerciseNameCompleted: { textDecorationLine: 'line-through', color: '#555' },
-  exerciseSets: { fontSize: 14, color: '#888' },
-  checkButton: { padding: 4 },
+  checkButton: { padding: 4, marginRight: 12 },
   checkCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 28,
+    height: 28,
+    borderRadius: 6,
     borderWidth: 2,
     borderColor: '#444',
     alignItems: 'center',
@@ -477,7 +473,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#10B981',
     borderColor: '#10B981',
   },
-  checkMark: { color: '#FFF', fontSize: 18, fontWeight: '700' },
+  checkMark: { color: '#FFF', fontSize: 16, fontWeight: '700' },
+  exerciseInfo: { flex: 1 },
+  exerciseName: { fontSize: 16, fontWeight: '600', color: '#FFFFFF' },
+  exerciseNameCompleted: { textDecorationLine: 'line-through', color: '#555' },
+  exerciseSets: { fontSize: 14, color: '#888', fontWeight: '500', marginLeft: 12 },
   emptyState: { alignItems: 'center', marginTop: 60, paddingHorizontal: 40 },
   emptyStateEmoji: { fontSize: 48, marginBottom: 16 },
   emptyStateTitle: { color: '#FFF', fontSize: 18, fontWeight: '700', marginBottom: 8, textAlign: 'center' },

@@ -14,7 +14,7 @@ import {
 import { LineChart } from 'react-native-gifted-charts';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { appId, auth, db } from '../../firebaseConfig';
-import { calculateEpley1RM } from '../utils/formulas';
+import { calculateEpley1RM } from '../../utils/formulas';
 
 interface Log {
   id: string;

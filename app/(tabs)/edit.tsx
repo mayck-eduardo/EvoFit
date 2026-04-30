@@ -31,7 +31,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import AuthForm from '../../components/AuthForm';
 import { appId, auth, db } from '../../firebaseConfig';
 import { useTheme } from '../../context/ThemeContext';
@@ -42,10 +42,11 @@ interface Routine {
   createdAt?: { seconds: number };
 }
 
-const ROUTINE_ICONS: string[] = ['dumbbell', 'fire', 'star', 'bolt', 'trophy', 'heart', 'medkit', 'flag'];
+const ROUTINE_ICONS: string[] = ['heartbeat', 'fire', 'star', 'bolt', 'trophy', 'heart', 'medkit', 'flag'];
 
 export default function EditScreen() {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<User | null>(auth.currentUser);
@@ -300,7 +301,7 @@ export default function EditScreen() {
             </View>
           );
         }}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 80 }]}
         ListEmptyComponent={
           <View style={styles.emptyState}>
             <Text style={styles.emptyEmoji}>📋</Text>
@@ -313,24 +314,6 @@ export default function EditScreen() {
       />
 
       <TouchableOpacity style={[styles.fab, { backgroundColor: colors.primary }]} onPress={openAddModal}>
-        <Text style={styles.fabText}>+</Text>
-      </TouchableOpacity>
-    </SafeAreaView>
-  );
-        }}
-        contentContainerStyle={styles.listContent}
-        ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyEmoji}>📋</Text>
-            <Text style={styles.emptyTitle}>Nenhuma ficha criada</Text>
-            <Text style={styles.emptyText}>
-              Toque no botão + para criar sua primeira ficha de treino.
-            </Text>
-          </View>
-        }
-      />
-
-      <TouchableOpacity style={styles.fab} onPress={openAddModal}>
         <Text style={styles.fabText}>+</Text>
       </TouchableOpacity>
     </SafeAreaView>

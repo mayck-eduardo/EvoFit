@@ -3,10 +3,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useIsFocused } from '@react-navigation/native';
 import { Tabs, useNavigationContainerRef } from 'expo-router';
 import React, { useEffect, useState } from 'react';
+import { Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../context/ThemeContext';
 
 export default function TabLayout() {
   const { colors, isDark } = useTheme();
+  const insets = useSafeAreaInsets();
   const [showReports, setShowReports] = useState(true);
   const isFocused = useIsFocused();
 
@@ -28,8 +31,9 @@ export default function TabLayout() {
           backgroundColor: colors.tabBarBg,
           borderTopColor: colors.tabBarBorder,
           borderTopWidth: 1,
-          height: 60,
+          height: 60 + insets.bottom,
           paddingTop: 4,
+          paddingBottom: insets.bottom,
         },
         tabBarLabelStyle: {
           fontSize: 11,

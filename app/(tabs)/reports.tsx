@@ -4,16 +4,17 @@ import { User, onAuthStateChanged } from 'firebase/auth';
 import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import AuthForm from '../../components/AuthForm';
 import { appId, auth, db } from '../../firebaseConfig';
 import { useTheme } from '../../context/ThemeContext';
 
 interface Routine { id: string; name: string; order: number; }
-const ROUTINE_ICONS = ['dumbbell', 'fire', 'star', 'bolt', 'trophy', 'heart', 'medkit', 'flag'];
+const ROUTINE_ICONS = ['heartbeat', 'fire', 'star', 'bolt', 'trophy', 'heart', 'medkit', 'flag'];
 
 export default function ReportsScreen() {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const [user, setUser] = useState<User | null>(auth.currentUser);
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [loading, setLoading] = useState(true);
@@ -65,7 +66,7 @@ export default function ReportsScreen() {
               <FontAwesome name="angle-right" size={18} color="#555" />
             </Pressable>
           )}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 16 }]}
           ListEmptyComponent={<Text style={styles.emptyText}>Nenhuma ficha encontrada.</Text>}
         />
       )}

@@ -14,7 +14,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FontAwesome } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -31,6 +31,7 @@ const AVATARS = ['user', 'user-circle', 'user-md', 'rocket', 'music', 'gamepad',
 
 export default function SettingsScreen() {
   const { colors, isDark, themeMode, setThemeMode } = useTheme();
+  const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(false);
   const [user, setUser] = useState<User | null>(auth.currentUser);
   const [initialLoading, setInitialLoading] = useState(true);
@@ -238,10 +239,10 @@ export default function SettingsScreen() {
           <View style={styles.sectionBody}>
             <Text style={[styles.label, { color: colors.textSecondary }]}>Tema</Text>
             <View style={[styles.pickerWrapper, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder }]}>
-              <Picker selectedValue={themeMode} onValueChange={(v) => setThemeMode(v)} style={[styles.picker, { color: colors.text }]} dropdownIconColor={colors.primary}>
-                <Picker.Item label="Escuro" value="dark" color={colors.text} />
-                <Picker.Item label="Claro" value="light" color={colors.text} />
-                <Picker.Item label="Seguir sistema" value="auto" color={colors.text} />
+              <Picker selectedValue={themeMode} onValueChange={(v) => setThemeMode(v)} style={styles.picker} dropdownIconColor={colors.primary} mode="dropdown" itemStyle={{ color: '#1F2937', backgroundColor: '#FFFFFF' }}>
+                <Picker.Item label="Escuro" value="dark" color="#1F2937" />
+                <Picker.Item label="Claro" value="light" color="#1F2937" />
+                <Picker.Item label="Seguir sistema" value="auto" color="#1F2937" />
               </Picker>
             </View>
           </View>
@@ -268,8 +269,8 @@ export default function SettingsScreen() {
             <Text style={[styles.sectionTitle, { color: colors.text }]}>Plano de Treino</Text>
           </Pressable>
           <View style={[styles.pickerWrapper, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder }]}>
-            <Picker selectedValue={currentPlanId} onValueChange={(v) => setCurrentPlanId(v)} style={[styles.picker, { color: colors.text }]} dropdownIconColor={colors.primary}>
-              {plans.map((p) => <Picker.Item key={p.id} label={p.name} value={p.id} color={colors.text} />)}
+            <Picker selectedValue={currentPlanId} onValueChange={(v) => setCurrentPlanId(v)} style={styles.picker} dropdownIconColor={colors.primary} mode="dropdown" itemStyle={{ color: '#1F2937', backgroundColor: '#FFFFFF' }}>
+              {plans.map((p) => <Picker.Item key={p.id} label={p.name} value={p.id} color="#1F2937" />)}
             </Picker>
           </View>
           <TouchableOpacity style={[styles.secondaryBtn, { backgroundColor: colors.inputBg }]} onPress={() => setPlanModalVisible(true)}>
@@ -306,10 +307,10 @@ export default function SettingsScreen() {
               {showDatePicker && <DateTimePicker value={birthdate} mode="date" display="default" onChange={(e, d) => { setShowDatePicker(false); if (d) setBirthdate(d); }} />}
               <Text style={[styles.label, { color: colors.textSecondary }]}>Sexo</Text>
               <View style={[styles.pickerWrapper, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder }]}>
-                <Picker selectedValue={gender} onValueChange={(v) => setGender(v)} style={[styles.picker, { color: colors.text }]} dropdownIconColor={colors.primary}>
-                  <Picker.Item label="Masculino" value="male" color={colors.text} />
-                  <Picker.Item label="Feminino" value="female" color={colors.text} />
-                  <Picker.Item label="Outro" value="other" color={colors.text} />
+                <Picker selectedValue={gender} onValueChange={(v) => setGender(v)} style={styles.picker} dropdownIconColor={colors.primary} mode="dropdown" itemStyle={{ color: '#1F2937', backgroundColor: '#FFFFFF' }}>
+                  <Picker.Item label="Masculino" value="male" color="#1F2937" />
+                  <Picker.Item label="Feminino" value="female" color="#1F2937" />
+                  <Picker.Item label="Outro" value="other" color="#1F2937" />
                 </Picker>
               </View>
               <TouchableOpacity style={[styles.primaryBtn, { backgroundColor: colors.primary }]} onPress={handleSaveProfile} disabled={loading}>
@@ -341,18 +342,18 @@ export default function SettingsScreen() {
             <View style={[styles.divider, { backgroundColor: colors.cardBorder }]} />
             <Text style={[styles.label, { color: colors.textSecondary }]}>Unidade de Peso</Text>
             <View style={[styles.pickerWrapper, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder }]}>
-              <Picker selectedValue={weightUnit} onValueChange={setWeightUnit} style={[styles.picker, { color: colors.text }]} dropdownIconColor={colors.primary}>
-                <Picker.Item label="Kg" value="kg" color={colors.text} />
-                <Picker.Item label="Lbs" value="lbs" color={colors.text} />
+              <Picker selectedValue={weightUnit} onValueChange={setWeightUnit} style={styles.picker} dropdownIconColor={colors.primary} mode="dropdown" itemStyle={{ color: '#1F2937', backgroundColor: '#FFFFFF' }}>
+                <Picker.Item label="Kg" value="kg" color="#1F2937" />
+                <Picker.Item label="Lbs" value="lbs" color="#1F2937" />
               </Picker>
             </View>
             <Text style={[styles.label, { color: colors.textSecondary }]}>Descanso (segundos)</Text>
             <TextInput style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]} value={timerInput} onChangeText={setTimerInput} keyboardType="number-pad" />
             <Text style={[styles.label, { color: colors.textSecondary }]}>Marcar calendário ao</Text>
             <View style={[styles.pickerWrapper, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder }]}>
-              <Picker selectedValue={completionMode} onValueChange={setCompletionMode} style={[styles.picker, { color: colors.text }]} dropdownIconColor={colors.primary}>
-                <Picker.Item label="1 exercício feito" value="any" color={colors.text} />
-                <Picker.Item label="Todos exercícios feitos" value="full" color={colors.text} />
+              <Picker selectedValue={completionMode} onValueChange={setCompletionMode} style={styles.picker} dropdownIconColor={colors.primary} mode="dropdown" itemStyle={{ color: '#1F2937', backgroundColor: '#FFFFFF' }}>
+                <Picker.Item label="1 exercício feito" value="any" color="#1F2937" />
+                <Picker.Item label="Todos exercícios feitos" value="full" color="#1F2937" />
               </Picker>
             </View>
             <View style={[styles.divider, { backgroundColor: colors.cardBorder }]} />
@@ -416,7 +417,7 @@ export default function SettingsScreen() {
           )}
         </View>
 
-        <View style={{ height: 40 }} />
+        <View style={{ height: 40 + insets.bottom }} />
       </ScrollView>
     </SafeAreaView>
   );
