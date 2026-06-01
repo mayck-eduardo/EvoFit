@@ -6,6 +6,10 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import ErrorBoundary from '../components/ErrorBoundary';
 import { ThemeProvider } from '../context/ThemeContext';
 
+export const unstable_settings = {
+  initialRouteName: '(tabs)',
+};
+
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({ Inter_400Regular, Inter_700Bold });
 

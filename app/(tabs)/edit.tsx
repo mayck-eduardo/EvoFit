@@ -2,7 +2,7 @@ import { FontAwesome } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useIsFocused } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
-import { useRouter } from 'expo-router';
+import { router } from 'expo-router';
 import { User, onAuthStateChanged } from 'firebase/auth';
 import {
   addDoc,
@@ -58,7 +58,6 @@ export default function EditScreen() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [currentPlanId, setCurrentPlanId] = useState('default');
 
-  const router = useRouter();
   const isFocused = useIsFocused();
 
   useEffect(() => {

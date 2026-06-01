@@ -1,8 +1,7 @@
 import { FontAwesome } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useIsFocused } from '@react-navigation/native';
-import { Tabs, useNavigationContainerRef } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import { Tabs, useFocusEffect } from 'expo-router';
+import React, { useState, useCallback } from 'react';
 import { Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../context/ThemeContext';
@@ -11,15 +10,16 @@ export default function TabLayout() {
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const [showReports, setShowReports] = useState(true);
-  const isFocused = useIsFocused();
 
-  useEffect(() => {
-    const loadPrefs = async () => {
-      const val = await AsyncStorage.getItem('@EvoFit:showReportsTab');
-      setShowReports(val === null ? true : val === 'true');
-    };
-    if (isFocused) loadPrefs();
-  }, [isFocused]);
+  useFocusEffect(
+    useCallback(() => {
+      const loadPrefs = async () => {
+        const val = await AsyncStorage.getItem('@EvoFit:showReportsTab');
+        setShowReports(val === null ? true : val === 'true');
+      };
+      loadPrefs();
+    }, [])
+  );
 
   return (
     <Tabs

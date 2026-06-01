@@ -1,5 +1,5 @@
 import { FontAwesome } from '@expo/vector-icons';
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack, useLocalSearchParams, router } from 'expo-router';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
@@ -18,7 +18,6 @@ export default function ReportExercisesScreen() {
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [loading, setLoading] = useState(true);
   const params = useLocalSearchParams();
-  const router = useRouter();
   const { routineId, routineName } = params;
 
   useEffect(() => {
