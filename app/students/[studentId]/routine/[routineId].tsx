@@ -1,8 +1,6 @@
 import { FontAwesome } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { Stack, useLocalSearchParams, useNavigation } from 'expo-router';
-import { useAuth } from '../../context/AuthContext';
 import {
   addDoc,
   collection,
@@ -31,8 +29,8 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { appId, db } from '../../firebaseConfig';
-import { useTheme } from '../../context/ThemeContext';
+import { appId, db } from '../../../../firebaseConfig';
+import { useTheme } from '../../../../context/ThemeContext';
 
 interface Exercise {
   id: string;
@@ -44,45 +42,29 @@ interface Exercise {
 
 const EXERCISE_ICONS = ['heartbeat', 'flag', 'star', 'fire', 'trophy', 'bolt', 'heart', 'medkit'];
 
-export default function RoutineScreen() {
+export default function StudentRoutineScreen() {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams();
   const navigation = useNavigation();
-  const insets = useSafeAreaInsets();
-  const { id: routineId, name: routineName } = params;
+  const { studentId, routineId, name: routineName } = params;
 
-  const { user } = useAuth();
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [loading, setLoading] = useState(true);
-
   const [exerciseModalVisible, setExerciseModalVisible] = useState(false);
   const [editingExercise, setEditingExercise] = useState<Exercise | null>(null);
   const [newExerciseName, setNewExerciseName] = useState('');
   const [newExerciseSets, setNewExerciseSets] = useState('');
   const [saveLoading, setSaveLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [currentPlanId, setCurrentPlanId] = useState('default');
-
-  const loadCurrentPlan = async () => {
-    try {
-      const savedPlan = await AsyncStorage.getItem('@EvoFit:currentPlanId');
-      setCurrentPlanId(savedPlan || 'default');
-    } catch (e) {
-      console.error('Erro ao ler plano:', e);
-    }
-  };
 
   useEffect(() => {
-    if (!user || !routineId) {
+    if (!studentId || !routineId) {
       setLoading(false);
       return;
     }
     setLoading(true);
-    const exercisesPath =
-      currentPlanId === 'default'
-        ? collection(db, 'artifacts', appId, 'users', user.uid, 'routines', routineId as string, 'exercises')
-        : collection(db, 'artifacts', appId, 'users', user.uid, 'plans', currentPlanId, 'routines', routineId as string, 'exercises');
-
+    const exercisesPath = collection(db, 'artifacts', appId, 'users', studentId as string, 'routines', routineId as string, 'exercises');
     const q = query(exercisesPath, orderBy('createdAt', 'asc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setExercises(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }) as Exercise));
@@ -92,7 +74,7 @@ export default function RoutineScreen() {
       setLoading(false);
     });
     return () => unsubscribe();
-  }, [user, routineId, currentPlanId]);
+  }, [studentId, routineId]);
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -120,17 +102,13 @@ export default function RoutineScreen() {
   };
 
   const handleSaveExercise = async () => {
-    if (!user || !routineId || !newExerciseName || !newExerciseSets) {
+    if (!studentId || !routineId || !newExerciseName || !newExerciseSets) {
       Alert.alert('Erro', 'Preencha todos os campos.');
       return;
     }
     setSaveLoading(true);
     try {
-      const exercisesCollection =
-        currentPlanId === 'default'
-          ? collection(db, 'artifacts', appId, 'users', user.uid, 'routines', routineId as string, 'exercises')
-          : collection(db, 'artifacts', appId, 'users', user.uid, 'plans', currentPlanId, 'routines', routineId as string, 'exercises');
-
+      const exercisesCollection = collection(db, 'artifacts', appId, 'users', studentId as string, 'routines', routineId as string, 'exercises');
       if (editingExercise) {
         await updateDoc(doc(exercisesCollection, editingExercise.id), {
           name: newExerciseName,
@@ -155,7 +133,7 @@ export default function RoutineScreen() {
   };
 
   const handleDeleteExercise = (exerciseId: string) => {
-    if (!user || !routineId) return;
+    if (!studentId || !routineId) return;
     Alert.alert('Deletar Exercício', 'Isso apagará o exercício e todos os registros.', [
       { text: 'Cancelar', style: 'cancel' },
       {
@@ -164,11 +142,7 @@ export default function RoutineScreen() {
         onPress: async () => {
           setActionLoading(exerciseId);
           try {
-            const exerciseRef =
-              currentPlanId === 'default'
-                ? doc(db, 'artifacts', appId, 'users', user.uid, 'routines', routineId as string, 'exercises', exerciseId)
-                : doc(db, 'artifacts', appId, 'users', user.uid, 'plans', currentPlanId, 'routines', routineId as string, 'exercises', exerciseId);
-
+            const exerciseRef = doc(db, 'artifacts', appId, 'users', studentId as string, 'routines', routineId as string, 'exercises', exerciseId);
             const logsCollection = collection(exerciseRef, 'logs');
             const logsSnapshot = await getDocs(logsCollection);
             const batch = writeBatch(db);
@@ -197,7 +171,7 @@ export default function RoutineScreen() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['bottom', 'left', 'right']}>
       <Modal animationType="slide" transparent visible={exerciseModalVisible} onRequestClose={() => setExerciseModalVisible(false)}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.7)' }]}>
           <View style={[styles.modalContent, { backgroundColor: colors.surfaceAlt }]}>
             <Text style={[styles.modalTitle, { color: colors.text }]}>{editingExercise ? 'Editar Exercício' : 'Novo Exercício'}</Text>
             <TextInput
@@ -249,7 +223,7 @@ export default function RoutineScreen() {
                   <Text style={[styles.actionText, { color: colors.textSecondary }]}>Editar</Text>
                 </Pressable>
                 <Pressable
-                  style={[styles.actionBtn, styles.deleteBtn]}
+                  style={[styles.actionBtn, { borderRightWidth: 0 }]}
                   onPress={() => handleDeleteExercise(item.id)}
                 >
                   {actionLoading === item.id ? (
@@ -282,14 +256,14 @@ export default function RoutineScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.7)' },
+  modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   modalContent: { borderRadius: 16, padding: 24, width: '85%' },
   modalTitle: { fontSize: 22, fontWeight: '700', marginBottom: 20 },
   modalInput: { padding: 14, borderRadius: 12, fontSize: 16, borderWidth: 1, marginBottom: 14 },
   modalButtons: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 },
   cancelText: { fontSize: 16, fontWeight: '600' },
   saveBtn: { paddingVertical: 10, paddingHorizontal: 20, borderRadius: 10 },
-  saveBtnText: { fontSize: 16, fontWeight: '700' },
+  saveBtnText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
   listContent: { padding: 16 },
   card: { borderRadius: 14, marginBottom: 10, borderWidth: 1, overflow: 'hidden' },
   cardTop: { flexDirection: 'row', alignItems: 'center', padding: 16, paddingBottom: 12 },
@@ -299,7 +273,6 @@ const styles = StyleSheet.create({
   cardSets: { fontSize: 14 },
   cardActions: { flexDirection: 'row', borderTopWidth: 1 },
   actionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 12, borderRightWidth: 1 },
-  deleteBtn: { borderRightWidth: 0 },
   actionText: { fontSize: 14, marginLeft: 6 },
   emptyState: { alignItems: 'center', marginTop: 60, paddingHorizontal: 40 },
   emptyEmoji: { fontSize: 48, marginBottom: 16 },

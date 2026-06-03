@@ -2,10 +2,11 @@ import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';
 import { getApp, getApps, initializeApp } from 'firebase/app';
 import {
   getAuth,
-  getReactNativePersistence,
   initializeAuth,
 } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+// @ts-ignore - getReactNativePersistence is available in React Native builds
+import { getReactNativePersistence } from '@firebase/auth';
+import { getFirestore, enableMultiTabIndexedDbPersistence } from 'firebase/firestore';
 
 // 1. As chaves agora são lidas do 'process.env'
 const firebaseConfig = {
@@ -43,6 +44,13 @@ try {
 }
 
 const db = getFirestore(app);
-// setLogLevel('debug');
+// Enable offline persistence
+enableMultiTabIndexedDbPersistence(db).catch((err) => {
+  if (err.code === 'failed-precondition') {
+    console.warn('Firestore persistence: multiple tabs open');
+  } else if (err.code === 'unimplemented') {
+    console.warn('Firestore persistence: not supported in this browser');
+  }
+});
 
 export { appId, auth, db };

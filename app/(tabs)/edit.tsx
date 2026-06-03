@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useIsFocused } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
-import { User, onAuthStateChanged } from 'firebase/auth';
+import { useAuth } from '../../context/AuthContext';
 import {
   addDoc,
   collection,
@@ -33,7 +33,7 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import AuthForm from '../../components/AuthForm';
-import { appId, auth, db } from '../../firebaseConfig';
+import { appId, db } from '../../firebaseConfig';
 import { useTheme } from '../../context/ThemeContext';
 
 interface Routine {
@@ -47,9 +47,9 @@ const ROUTINE_ICONS: string[] = ['heartbeat', 'fire', 'star', 'bolt', 'trophy', 
 export default function EditScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const { user, loading: authLoading } = useAuth();
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState<User | null>(auth.currentUser);
 
   const [routineModalVisible, setRoutineModalVisible] = useState(false);
   const [newRoutineName, setNewRoutineName] = useState('');
@@ -59,14 +59,6 @@ export default function EditScreen() {
   const [currentPlanId, setCurrentPlanId] = useState('default');
 
   const isFocused = useIsFocused();
-
-  useEffect(() => {
-    const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-      setLoading(false);
-    });
-    return () => unsubscribeAuth();
-  }, []);
 
   useEffect(() => {
     if (user && isFocused) loadCurrentPlan();
@@ -196,7 +188,7 @@ export default function EditScreen() {
     });
   };
 
-  if (loading && !user) {
+  if (authLoading) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         <ActivityIndicator size="large" color={colors.primary} />
@@ -238,7 +230,7 @@ export default function EditScreen() {
                 {saveLoading ? (
                   <ActivityIndicator color="#FFF" />
                 ) : (
-                  <Text style={styles.modalSaveText}>Salvar</Text>
+                  <Text style={[styles.modalSaveText, { color: '#FFF' }]}>Salvar</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -313,24 +305,22 @@ export default function EditScreen() {
       />
 
       <TouchableOpacity style={[styles.fab, { backgroundColor: colors.primary }]} onPress={openAddModal}>
-        <Text style={styles.fabText}>+</Text>
+        <Text style={[styles.fabText, { color: colors.text }]}>+</Text>
       </TouchableOpacity>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#121212' },
+  container: { flex: 1 },
   header: { padding: 20, paddingBottom: 12 },
-  headerTitle: { fontSize: 32, fontWeight: '700', color: '#FFFFFF', marginBottom: 4 },
-  headerSubtitle: { fontSize: 15, color: '#888' },
+  headerTitle: { fontSize: 32, fontWeight: '700', marginBottom: 4 },
+  headerSubtitle: { fontSize: 15 },
   listContent: { paddingHorizontal: 16 },
   card: {
-    backgroundColor: '#1E1E1E',
     borderRadius: 14,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: '#2A2A2A',
     overflow: 'hidden',
   },
   cardMain: {
@@ -342,30 +332,27 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 12,
-    backgroundColor: '#2A1A1A',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 14,
   },
   cardText: { flex: 1 },
-  cardName: { fontSize: 17, fontWeight: '600', color: '#FFFFFF', marginBottom: 3 },
-  cardHint: { fontSize: 13, color: '#666' },
+  cardName: { fontSize: 17, fontWeight: '600', marginBottom: 3 },
+  cardHint: { fontSize: 13 },
   cardActions: {
     flexDirection: 'row',
     borderTopWidth: 1,
-    borderTopColor: '#2A2A2A',
   },
   actionBtn: {
     flex: 1,
     alignItems: 'center',
     padding: 12,
     borderRightWidth: 1,
-    borderRightColor: '#2A2A2A',
   },
   emptyState: { alignItems: 'center', marginTop: 60, paddingHorizontal: 40 },
   emptyEmoji: { fontSize: 48, marginBottom: 16 },
-  emptyTitle: { fontSize: 18, fontWeight: '700', color: '#FFF', marginBottom: 8, textAlign: 'center' },
-  emptyText: { fontSize: 14, color: '#888', textAlign: 'center' },
+  emptyTitle: { fontSize: 18, fontWeight: '700', marginBottom: 8, textAlign: 'center' },
+  emptyText: { fontSize: 14, textAlign: 'center' },
   fab: {
     position: 'absolute',
     bottom: 24,
@@ -373,7 +360,6 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: '#EF4444',
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
@@ -382,14 +368,14 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 8,
   },
-  fabText: { fontSize: 28, color: '#FFF', fontWeight: '300', lineHeight: 28 },
+  fabText: { fontSize: 28, fontWeight: '300', lineHeight: 28 },
   modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.7)' },
-  modalContent: { backgroundColor: '#2A2A2A', borderRadius: 16, padding: 24, width: '85%' },
-  modalTitle: { fontSize: 22, fontWeight: '700', color: '#FFF', marginBottom: 20 },
-  modalInput: { backgroundColor: '#1E1E1E', color: '#FFF', padding: 14, borderRadius: 12, fontSize: 16, borderWidth: 1, borderColor: '#3A3A3A', marginBottom: 20 },
+  modalContent: { borderRadius: 16, padding: 24, width: '85%' },
+  modalTitle: { fontSize: 22, fontWeight: '700', marginBottom: 20 },
+  modalInput: { padding: 14, borderRadius: 12, fontSize: 16, borderWidth: 1, marginBottom: 20 },
   modalButtons: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   modalCancel: { padding: 10 },
-  modalCancelText: { color: '#EF4444', fontSize: 16, fontWeight: '600' },
-  modalSave: { backgroundColor: '#EF4444', paddingVertical: 12, paddingHorizontal: 24, borderRadius: 12 },
-  modalSaveText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
+  modalCancelText: { fontSize: 16, fontWeight: '600' },
+  modalSave: { paddingVertical: 12, paddingHorizontal: 24, borderRadius: 12 },
+  modalSaveText: { fontSize: 16, fontWeight: '700' },
 });

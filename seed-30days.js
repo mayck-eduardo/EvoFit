@@ -1,7 +1,41 @@
+/**
+ * ⚠️ SEED 30 DAYS - Configuração de Segurança
+ *
+ * Para rodar este script, crie um arquivo .env na raiz do projeto com:
+ *   FIREBASE_API_KEY=sua_chave_aqui
+ *   FIREBASE_PROJECT_ID=seu_project_id
+ *
+ * OU exporte as variáveis no terminal:
+ *   $env:FIREBASE_API_KEY="sua_chave"; $env:FIREBASE_PROJECT_ID="seu_id"; node seed-30days.js
+ *
+ * NUNCA hardcode chaves de API neste arquivo!
+ */
+
 const https = require('https');
 
-const API_KEY = 'AIzaSyD9xHz8kwXMwCryF3_NvLXpx550jqgcbJk';
-const PROJECT_ID = 'evofit-app-d2e47';
+function loadEnv() {
+  try {
+    const fs = require('fs');
+    const envPath = require('path').join(__dirname, '.env');
+    if (fs.existsSync(envPath)) {
+      const lines = fs.readFileSync(envPath, 'utf8').split('\n');
+      for (const line of lines) {
+        const match = line.match(/^\s*([^#=]+)=(.*)/);
+        if (match) process.env[match[1].trim()] = match[2].trim();
+      }
+    }
+  } catch (e) {}
+}
+loadEnv();
+
+const API_KEY = process.env.FIREBASE_API_KEY || process.env.EXPO_PUBLIC_FIREBASE_API_KEY;
+const PROJECT_ID = process.env.FIREBASE_PROJECT_ID || process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID;
+
+if (!API_KEY || !PROJECT_ID || API_KEY === 'AIzaSyExAmPlE_KEY_HERE') {
+  console.error('❌ ERRO: Configure FIREBASE_API_KEY e FIREBASE_PROJECT_ID no .env ou nas variáveis de ambiente.');
+  console.error('   Copie .env.example para .env e preencha com suas credenciais.');
+  process.exit(1);
+}
 
 function apiPost(url, data) {
   return new Promise((resolve, reject) => {

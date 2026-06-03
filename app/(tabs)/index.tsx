@@ -4,7 +4,7 @@ import { useIsFocused } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { Link, useNavigation } from 'expo-router';
-import { onAuthStateChanged, User } from 'firebase/auth';
+import { useAuth } from '../../context/AuthContext';
 import {
   collection,
   deleteField,
@@ -30,7 +30,7 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import AuthForm from '../../components/AuthForm';
-import { appId, auth, db } from '../../firebaseConfig';
+import { appId, db } from '../../firebaseConfig';
 import { useTheme } from '../../context/ThemeContext';
 
 interface Routine {
@@ -74,26 +74,17 @@ export default function WorkoutScreen() {
   const insets = useSafeAreaInsets();
   const progressAnim = useRef(new Animated.Value(0)).current;
 
-  const [user, setUser] = useState<User | null>(auth.currentUser);
+  const { user, loading: authLoading } = useAuth();
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [selectedRoutineId, setSelectedRoutineId] = useState<string | null>(null);
   const [loadingRoutines, setLoadingRoutines] = useState(true);
   const [loadingExercises, setLoadingExercises] = useState(false);
-  const [initialLoading, setInitialLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   const [completionMode, setCompletionMode] = useState<'any' | 'full'>('any');
   const [simpleMode, setSimpleMode] = useState(false);
   const [currentPlanId, setCurrentPlanId] = useState('default');
-
-  useEffect(() => {
-    const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-      setInitialLoading(false);
-    });
-    return () => unsubscribeAuth();
-  }, []);
 
   useEffect(() => {
     if (isFocused) loadPreferences();
@@ -117,12 +108,12 @@ export default function WorkoutScreen() {
       headerShown: !!user,
       headerTitle: () => (
         <View>
-          <Text style={styles.headerTitle}>{getGreeting()}!</Text>
-          <Text style={styles.headerSubtitle}>{getTodayDate()}</Text>
+          <Text style={[styles.headerTitle, { color: colors.text }]}>{getGreeting()}!</Text>
+          <Text style={[styles.headerSubtitle, { color: colors.textSecondary }]}>{getTodayDate()}</Text>
         </View>
       ),
-      headerStyle: { backgroundColor: '#121212', height: 100 },
-      headerTintColor: '#FFFFFF',
+      headerStyle: { backgroundColor: colors.background, height: 100 },
+      headerTintColor: colors.text,
     });
   }, [navigation, user]);
 
@@ -249,7 +240,7 @@ export default function WorkoutScreen() {
   const totalCount = exercises.length;
   const progressPercent = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
 
-  if (initialLoading) {
+  if (authLoading) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         <ActivityIndicator size="large" color={colors.primary} />
@@ -279,7 +270,7 @@ export default function WorkoutScreen() {
                 Haptics.selectionAsync();
                 setSelectedRoutineId(v);
               }}
-              style={styles.picker}
+              style={[styles.picker, { color: colors.text }]}
               dropdownIconColor={colors.primary}
               mode="dropdown"
               itemStyle={{ color: '#1F2937', backgroundColor: '#FFFFFF' }}
@@ -353,12 +344,12 @@ export default function WorkoutScreen() {
                     <View
                       style={[
                         styles.checkCircle,
-                        { borderColor: isDark ? '#444' : colors.cardBorder },
+                        { borderColor: isDark ? colors.textMuted : colors.cardBorder },
                         completed && { backgroundColor: colors.success, borderColor: colors.success },
                       ]}
                     >
-                      {completed && (
-                        <Text style={styles.checkMark}>✓</Text>
+                        {completed && (
+                        <Text style={[styles.checkMark, { color: colors.text }]}>✓</Text>
                       )}
                     </View>
                   )}
@@ -382,6 +373,7 @@ export default function WorkoutScreen() {
                       params: {
                         exerciseName: item.name,
                         routineId: selectedRoutineId,
+                        routineName: routines.find((r) => r.id === selectedRoutineId)?.name || '',
                         exerciseSets: item.sets,
                       },
                     } as any}
@@ -423,41 +415,33 @@ export default function WorkoutScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#121212' },
-  headerTitle: { fontSize: 22, fontWeight: '700', color: '#FFFFFF' },
-  headerSubtitle: { fontSize: 13, color: '#888' },
+  container: { flex: 1 },
+  headerTitle: { fontSize: 22, fontWeight: '700' },
+  headerSubtitle: { fontSize: 13 },
   pickerSection: { paddingHorizontal: 16, paddingTop: 8 },
   pickerWrapper: {
-    backgroundColor: '#1E1E1E',
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#2A2A2A',
     overflow: 'hidden',
   },
-  picker: { color: '#FFFFFF', height: Platform.OS === 'ios' ? 120 : 50 },
-  noRoutinesText: { color: '#888', textAlign: 'center', marginTop: 10 },
+  picker: { height: Platform.OS === 'ios' ? 120 : 50 },
+  noRoutinesText: { textAlign: 'center', marginTop: 10 },
   progressSection: { paddingHorizontal: 16, paddingTop: 12 },
   progressHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
-  progressLabel: { color: '#888', fontSize: 14, fontWeight: '600' },
-  progressCount: { color: '#FFF', fontSize: 14, fontWeight: '700' },
-  progressBarBg: { height: 8, backgroundColor: '#2A2A2A', borderRadius: 4, overflow: 'hidden' },
+  progressLabel: { fontSize: 14, fontWeight: '600' },
+  progressCount: { fontSize: 14, fontWeight: '700' },
+  progressBarBg: { height: 8, borderRadius: 4, overflow: 'hidden' },
   progressBarFill: { height: 8, borderRadius: 4 },
-  completeText: { color: '#10B981', fontSize: 14, fontWeight: '600', marginTop: 8, textAlign: 'center' },
+  completeText: { fontSize: 14, fontWeight: '600', marginTop: 8, textAlign: 'center' },
   listContent: { padding: 16, gap: 0 },
   exerciseCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#1E1E1E',
     borderRadius: 14,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: '#2A2A2A',
     paddingHorizontal: 14,
     paddingVertical: 12,
-  },
-  exerciseCardCompleted: {
-    backgroundColor: '#1A2E1A',
-    borderColor: '#2D5A2D',
   },
   checkButton: { padding: 4, marginRight: 12 },
   checkCircle: {
@@ -465,21 +449,15 @@ const styles = StyleSheet.create({
     height: 28,
     borderRadius: 6,
     borderWidth: 2,
-    borderColor: '#444',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  checkCircleCompleted: {
-    backgroundColor: '#10B981',
-    borderColor: '#10B981',
-  },
-  checkMark: { color: '#FFF', fontSize: 16, fontWeight: '700' },
+  checkMark: { fontSize: 16, fontWeight: '700' },
   exerciseInfo: { flex: 1 },
-  exerciseName: { fontSize: 16, fontWeight: '600', color: '#FFFFFF' },
-  exerciseNameCompleted: { textDecorationLine: 'line-through', color: '#555' },
-  exerciseSets: { fontSize: 14, color: '#888', fontWeight: '500', marginLeft: 12 },
+  exerciseName: { fontSize: 16, fontWeight: '600' },
+  exerciseSets: { fontSize: 14, fontWeight: '500', marginLeft: 12 },
   emptyState: { alignItems: 'center', marginTop: 60, paddingHorizontal: 40 },
   emptyStateEmoji: { fontSize: 48, marginBottom: 16 },
-  emptyStateTitle: { color: '#FFF', fontSize: 18, fontWeight: '700', marginBottom: 8, textAlign: 'center' },
-  emptyStateText: { color: '#888', fontSize: 14, textAlign: 'center' },
+  emptyStateTitle: { fontSize: 18, fontWeight: '700', marginBottom: 8, textAlign: 'center' },
+  emptyStateText: { fontSize: 14, textAlign: 'center' },
 });

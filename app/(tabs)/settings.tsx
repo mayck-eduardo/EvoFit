@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
+  Linking,
   Modal,
   Platform,
   Pressable,
@@ -19,22 +20,25 @@ import { FontAwesome } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Picker } from '@react-native-picker/picker';
-import { EmailAuthProvider, User, onAuthStateChanged, reauthenticateWithCredential, signOut, updatePassword } from 'firebase/auth';
+import { EmailAuthProvider, reauthenticateWithCredential, signOut, updatePassword } from 'firebase/auth';
+import { useAuth } from '../../context/AuthContext';
 import { addDoc, collection, doc, getDoc, getDocs, serverTimestamp, setDoc } from 'firebase/firestore';
 import AuthForm from '../../components/AuthForm';
 import { appId, auth, db } from '../../firebaseConfig';
 import { useTheme } from '../../context/ThemeContext';
+import { exportBackup, importBackup } from '../../utils/backup';
 
-interface UserProfile { email: string; photoURL?: string; height?: number; weight?: number; birthdate?: string; gender?: 'male' | 'female' | 'other'; }
+import { UserRole } from '../../context/AuthContext';
+
+interface UserProfile { email: string; photoURL?: string; height?: number; weight?: number; birthdate?: string; gender?: 'male' | 'female' | 'other'; role?: UserRole; }
 interface TrainingPlan { id: string; name: string; }
 const AVATARS = ['user', 'user-circle', 'user-md', 'rocket', 'music', 'gamepad', 'heart', 'star'] as const;
 
 export default function SettingsScreen() {
   const { colors, isDark, themeMode, setThemeMode } = useTheme();
   const insets = useSafeAreaInsets();
+  const { user, loading: initLoading, refreshProfile } = useAuth();
   const [loading, setLoading] = useState(false);
-  const [user, setUser] = useState<User | null>(auth.currentUser);
-  const [initialLoading, setInitialLoading] = useState(true);
   const [timerInput, setTimerInput] = useState('90');
   const [completionMode, setCompletionMode] = useState<'any' | 'full'>('any');
   const [weightUnit, setWeightUnit] = useState<'kg' | 'lbs'>('kg');
@@ -52,25 +56,15 @@ export default function SettingsScreen() {
   const [birthdate, setBirthdate] = useState<Date>(new Date(2000, 0, 1));
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [selectedAvatar, setSelectedAvatar] = useState<string>('user');
+  const [role, setRole] = useState<UserRole>('student');
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
-  const [authLoading, setAuthLoading] = useState(false);
+  const [passwordLoading, setPasswordLoading] = useState(false);
   const [showAccount, setShowAccount] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [showData, setShowData] = useState(false);
 
-  useEffect(() => {
-    const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-      setInitialLoading(false);
-      if (currentUser) {
-        loadPreferences();
-        loadUserProfile(currentUser.uid);
-        loadPlans(currentUser.uid);
-      }
-    });
-    return () => unsubscribeAuth();
-  }, []);
+
 
   const loadPreferences = async () => {
     try {
@@ -127,6 +121,7 @@ export default function SettingsScreen() {
         setGender(data.gender || 'male');
         setBirthdate(data.birthdate ? new Date(data.birthdate) : new Date(2000, 0, 1));
         setSelectedAvatar(data.photoURL || 'user');
+        setRole(data.role || 'student');
       }
     } catch (e) { console.error(e); }
   };
@@ -135,9 +130,10 @@ export default function SettingsScreen() {
     if (!user) return;
     setLoading(true);
     try {
-      const data = { height: parseFloat(height) || 0, weight: parseFloat(weight) || 0, gender, birthdate: birthdate.toISOString().split('T')[0], photoURL: selectedAvatar };
+      const data = { height: parseFloat(height) || 0, weight: parseFloat(weight) || 0, gender, birthdate: birthdate.toISOString().split('T')[0], photoURL: selectedAvatar, role };
       await setDoc(doc(db, 'artifacts', appId, 'users', user.uid), data, { merge: true });
       setProfile((prev) => ({ ...prev, ...data, email: prev?.email || user.email! }));
+      await refreshProfile();
       Alert.alert('Sucesso', 'Perfil salvo!');
     } catch (e) { Alert.alert('Erro', 'Falha ao salvar.'); }
     setLoading(false);
@@ -145,7 +141,7 @@ export default function SettingsScreen() {
 
   const handleChangePassword = async () => {
     if (!user || !currentPassword || !newPassword) { Alert.alert('Erro', 'Preencha as senhas.'); return; }
-    setAuthLoading(true);
+    setPasswordLoading(true);
     try {
       await reauthenticateWithCredential(user, EmailAuthProvider.credential(user.email!, currentPassword));
       await updatePassword(user, newPassword);
@@ -153,7 +149,7 @@ export default function SettingsScreen() {
       setCurrentPassword('');
       setNewPassword('');
     } catch (e: any) { Alert.alert('Erro', e.message); }
-    setAuthLoading(false);
+    setPasswordLoading(false);
   };
 
   const handleSavePreferences = async () => {
@@ -205,20 +201,20 @@ export default function SettingsScreen() {
   const bmi = calculateBMI();
   const age = calculateAge();
 
-  if (initialLoading) return <View style={styles.container}><ActivityIndicator size="large" color="#EF4444" /></View>;
-  if (!user) return <View style={styles.container}><AuthForm /></View>;
+  if (initLoading) return <View style={[styles.container, { backgroundColor: colors.background }]}><ActivityIndicator size="large" color={colors.primary} /></View>;
+  if (!user) return <View style={[styles.container, { backgroundColor: colors.background }]}><AuthForm /></View>;
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
       <Modal animationType="slide" transparent visible={planModalVisible} onRequestClose={() => setPlanModalVisible(false)}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Novo Plano</Text>
-            <TextInput style={styles.input} placeholder="Nome do plano" placeholderTextColor="#666" value={newPlanName} onChangeText={setNewPlanName} />
+          <View style={[styles.modalContent, { backgroundColor: colors.surfaceAlt }]}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Novo Plano</Text>
+            <TextInput style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]} placeholder="Nome do plano" placeholderTextColor={colors.textMuted} value={newPlanName} onChangeText={setNewPlanName} />
             <View style={styles.modalButtons}>
-              <Pressable onPress={() => setPlanModalVisible(false)}><Text style={styles.cancelText}>Cancelar</Text></Pressable>
-              <TouchableOpacity style={styles.saveBtn} onPress={handleCreatePlan} disabled={loading}>
-                {loading ? <ActivityIndicator color="#FFF" /> : <Text style={styles.saveBtnText}>Criar</Text>}
+              <Pressable onPress={() => setPlanModalVisible(false)}><Text style={[styles.cancelText, { color: colors.primary }]}>Cancelar</Text></Pressable>
+              <TouchableOpacity style={[styles.saveBtn, { backgroundColor: colors.primary }]} onPress={handleCreatePlan} disabled={loading}>
+                {loading ? <ActivityIndicator color="#FFF" /> : <Text style={[styles.saveBtnText, { color: '#FFF' }]}>Criar</Text>}
               </TouchableOpacity>
             </View>
           </View>
@@ -227,7 +223,7 @@ export default function SettingsScreen() {
 
       <ScrollView>
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Ajustes</Text>
+          <Text style={[styles.headerTitle, { color: colors.text }]}>Ajustes</Text>
         </View>
 
         {/* Theme */}
@@ -239,7 +235,7 @@ export default function SettingsScreen() {
           <View style={styles.sectionBody}>
             <Text style={[styles.label, { color: colors.textSecondary }]}>Tema</Text>
             <View style={[styles.pickerWrapper, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder }]}>
-              <Picker selectedValue={themeMode} onValueChange={(v) => setThemeMode(v)} style={styles.picker} dropdownIconColor={colors.primary} mode="dropdown" itemStyle={{ color: '#1F2937', backgroundColor: '#FFFFFF' }}>
+              <Picker selectedValue={themeMode} onValueChange={(v) => setThemeMode(v)} style={[styles.picker, { color: colors.text }]} dropdownIconColor={colors.primary} mode="dropdown" itemStyle={{ color: '#1F2937', backgroundColor: '#FFFFFF' }}>
                 <Picker.Item label="Escuro" value="dark" color="#1F2937" />
                 <Picker.Item label="Claro" value="light" color="#1F2937" />
                 <Picker.Item label="Seguir sistema" value="auto" color="#1F2937" />
@@ -269,7 +265,7 @@ export default function SettingsScreen() {
             <Text style={[styles.sectionTitle, { color: colors.text }]}>Plano de Treino</Text>
           </Pressable>
           <View style={[styles.pickerWrapper, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder }]}>
-            <Picker selectedValue={currentPlanId} onValueChange={(v) => setCurrentPlanId(v)} style={styles.picker} dropdownIconColor={colors.primary} mode="dropdown" itemStyle={{ color: '#1F2937', backgroundColor: '#FFFFFF' }}>
+            <Picker selectedValue={currentPlanId} onValueChange={(v) => setCurrentPlanId(v)} style={[styles.picker, { color: colors.text }]} dropdownIconColor={colors.primary} mode="dropdown" itemStyle={{ color: '#1F2937', backgroundColor: '#FFFFFF' }}>
               {plans.map((p) => <Picker.Item key={p.id} label={p.name} value={p.id} color="#1F2937" />)}
             </Picker>
           </View>
@@ -307,14 +303,22 @@ export default function SettingsScreen() {
               {showDatePicker && <DateTimePicker value={birthdate} mode="date" display="default" onChange={(e, d) => { setShowDatePicker(false); if (d) setBirthdate(d); }} />}
               <Text style={[styles.label, { color: colors.textSecondary }]}>Sexo</Text>
               <View style={[styles.pickerWrapper, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder }]}>
-                <Picker selectedValue={gender} onValueChange={(v) => setGender(v)} style={styles.picker} dropdownIconColor={colors.primary} mode="dropdown" itemStyle={{ color: '#1F2937', backgroundColor: '#FFFFFF' }}>
+                <Picker selectedValue={gender} onValueChange={(v) => setGender(v)} style={[styles.picker, { color: colors.text }]} dropdownIconColor={colors.primary} mode="dropdown" itemStyle={{ color: '#1F2937', backgroundColor: '#FFFFFF' }}>
                   <Picker.Item label="Masculino" value="male" color="#1F2937" />
                   <Picker.Item label="Feminino" value="female" color="#1F2937" />
                   <Picker.Item label="Outro" value="other" color="#1F2937" />
                 </Picker>
               </View>
+              <Text style={[styles.label, { color: colors.textSecondary }]}>Tipo de Conta</Text>
+              <View style={[styles.pickerWrapper, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder }]}>
+                <Picker selectedValue={role} onValueChange={(v) => setRole(v)} style={[styles.picker, { color: colors.text }]} dropdownIconColor={colors.primary} mode="dropdown" itemStyle={{ color: '#1F2937', backgroundColor: '#FFFFFF' }}>
+                  <Picker.Item label="Aluno" value="student" color="#1F2937" />
+                  <Picker.Item label="Personal Trainer" value="personal" color="#1F2937" />
+                  <Picker.Item label="Ambos" value="both" color="#1F2937" />
+                </Picker>
+              </View>
               <TouchableOpacity style={[styles.primaryBtn, { backgroundColor: colors.primary }]} onPress={handleSaveProfile} disabled={loading}>
-                {loading ? <ActivityIndicator color="#FFF" /> : <Text style={styles.primaryBtnText}>Salvar</Text>}
+                {loading ? <ActivityIndicator color="#FFF" /> : <Text style={[styles.primaryBtnText, { color: '#FFF' }]}>Salvar</Text>}
               </TouchableOpacity>
             </View>
           )}
@@ -342,7 +346,7 @@ export default function SettingsScreen() {
             <View style={[styles.divider, { backgroundColor: colors.cardBorder }]} />
             <Text style={[styles.label, { color: colors.textSecondary }]}>Unidade de Peso</Text>
             <View style={[styles.pickerWrapper, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder }]}>
-              <Picker selectedValue={weightUnit} onValueChange={setWeightUnit} style={styles.picker} dropdownIconColor={colors.primary} mode="dropdown" itemStyle={{ color: '#1F2937', backgroundColor: '#FFFFFF' }}>
+              <Picker selectedValue={weightUnit} onValueChange={setWeightUnit} style={[styles.picker, { color: colors.text }]} dropdownIconColor={colors.primary} mode="dropdown" itemStyle={{ color: '#1F2937', backgroundColor: '#FFFFFF' }}>
                 <Picker.Item label="Kg" value="kg" color="#1F2937" />
                 <Picker.Item label="Lbs" value="lbs" color="#1F2937" />
               </Picker>
@@ -351,7 +355,7 @@ export default function SettingsScreen() {
             <TextInput style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]} value={timerInput} onChangeText={setTimerInput} keyboardType="number-pad" />
             <Text style={[styles.label, { color: colors.textSecondary }]}>Marcar calendário ao</Text>
             <View style={[styles.pickerWrapper, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder }]}>
-              <Picker selectedValue={completionMode} onValueChange={setCompletionMode} style={styles.picker} dropdownIconColor={colors.primary} mode="dropdown" itemStyle={{ color: '#1F2937', backgroundColor: '#FFFFFF' }}>
+              <Picker selectedValue={completionMode} onValueChange={setCompletionMode} style={[styles.picker, { color: colors.text }]} dropdownIconColor={colors.primary} mode="dropdown" itemStyle={{ color: '#1F2937', backgroundColor: '#FFFFFF' }}>
                 <Picker.Item label="1 exercício feito" value="any" color="#1F2937" />
                 <Picker.Item label="Todos exercícios feitos" value="full" color="#1F2937" />
               </Picker>
@@ -362,8 +366,55 @@ export default function SettingsScreen() {
               <Switch trackColor={{ false: colors.surfaceAlt, true: colors.primary }} thumbColor="#FFF" onValueChange={() => setTimerSound(!timerSound)} value={timerSound} />
             </View>
             <TouchableOpacity style={[styles.primaryBtn, { backgroundColor: colors.primary }]} onPress={handleSavePreferences} disabled={loading}>
-              <Text style={styles.primaryBtnText}>Salvar Preferências</Text>
+              <Text style={[styles.primaryBtnText, { color: '#FFF' }]}>Salvar Preferências</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Ecosystem Hub */}
+        <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.cardBorder }]}>
+          <Pressable style={styles.sectionHeader}>
+            <FontAwesome name="cubes" size={18} color={colors.primary} />
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Ecossistema Mayck OS</Text>
+          </Pressable>
+          <View style={styles.sectionBody}>
+            {[
+              { name: "Cifras Pro", scheme: "manus20260330161141://", github: "https://github.com/mayck-eduardo/cifrador-mobile", colorClass: "#E0F2FE", color: "#0284C7", icon: "music", desc: "Buscador e editor de cifras" },
+              { name: "FinanceTrack", scheme: "financetrack://", github: "https://github.com/mayck-eduardo/financetrack", colorClass: "#EEF2FF", color: "#4F46E5", icon: "line-chart", desc: "Gestão financeira e orçamentos" },
+              { name: "Banda Coordinator", scheme: "banda://", github: "https://github.com/mayck-eduardo/banda", colorClass: "#D1FAE5", color: "#059669", icon: "users", desc: "Escalas de louvores e chat" },
+              { name: "Contador", scheme: "contador://", github: "https://github.com/mayck-eduardo/contador", colorClass: "#F3E8FF", color: "#7C3AED", icon: "clock-o", desc: "Contador de dias e hábitos" },
+              { name: "CataLog", scheme: "catalog://", github: "https://github.com/mayck-eduardo/log_flix", colorClass: "#FCE7F3", color: "#DB2777", icon: "film", desc: "Catálogo e diário de filmes/séries" },
+              { name: "Day Tracker", scheme: "daytracker://", github: "https://github.com/mayck-eduardo/daytracker", colorClass: "#FEF3C7", color: "#D97706", icon: "calendar", desc: "Monitoramento de hábitos diários" }
+            ].map((item, index, arr) => (
+              <TouchableOpacity 
+                key={item.name}
+                onPress={() => {
+                  Linking.openURL(item.scheme).catch(() => {
+                    Alert.alert(
+                      "App não instalado",
+                      `O ${item.name} não está instalado. Deseja visualizar o repositório no GitHub?`,
+                      [
+                        { text: "Cancelar", style: "cancel" },
+                        { text: "Ver GitHub", onPress: () => Linking.openURL(item.github) }
+                      ]
+                    );
+                  });
+                }}
+                style={[styles.ecoItem, index === arr.length - 1 ? { borderBottomWidth: 0 } : { borderBottomColor: colors.cardBorder }]}
+              >
+                <View style={[styles.ecoIcon, { backgroundColor: item.colorClass }]}>
+                  <FontAwesome name={item.icon as any} size={18} color={item.color} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.ecoName, { color: colors.text }]}>{item.name}</Text>
+                  <Text style={[styles.ecoDesc, { color: colors.textSecondary }]}>{item.desc}</Text>
+                </View>
+                <FontAwesome name="chevron-right" size={12} color={colors.textMuted} />
+              </TouchableOpacity>
+            ))}
+            <View style={{ marginTop: 14, paddingTop: 14, borderTopWidth: 1, borderTopColor: colors.cardBorder, alignItems: 'center' }}>
+              <Text style={{ fontSize: 10, fontWeight: '700', color: colors.textSecondary, letterSpacing: 1, textTransform: 'uppercase' }}>Desenvolvido por Mayck Eduardo</Text>
+            </View>
           </View>
         </View>
 
@@ -380,12 +431,12 @@ export default function SettingsScreen() {
               <TextInput style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]} placeholder="Senha atual" placeholderTextColor={colors.textMuted} secureTextEntry value={currentPassword} onChangeText={setCurrentPassword} />
               <Text style={[styles.label, { color: colors.textSecondary }]}>Nova Senha</Text>
               <TextInput style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]} placeholder="Mín. 6 caracteres" placeholderTextColor={colors.textMuted} secureTextEntry value={newPassword} onChangeText={setNewPassword} />
-              <TouchableOpacity style={[styles.primaryBtn, { backgroundColor: colors.primary }]} onPress={handleChangePassword} disabled={authLoading}>
-                {authLoading ? <ActivityIndicator color="#FFF" /> : <Text style={styles.primaryBtnText}>Alterar Senha</Text>}
+              <TouchableOpacity style={[styles.primaryBtn, { backgroundColor: colors.primary }]} onPress={handleChangePassword} disabled={passwordLoading}>
+                {passwordLoading ? <ActivityIndicator color="#FFF" /> : <Text style={[styles.primaryBtnText, { color: '#FFF' }]}>Alterar Senha</Text>}
               </TouchableOpacity>
               <TouchableOpacity style={[styles.dangerBtn, { backgroundColor: colors.danger }]} onPress={handleLogout}>
                 <FontAwesome name="sign-out" size={16} color="#FFF" />
-                <Text style={styles.dangerBtnText}>Sair</Text>
+                <Text style={[styles.dangerBtnText, { color: '#FFF' }]}>Sair</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -400,10 +451,32 @@ export default function SettingsScreen() {
           </Pressable>
           {showData && (
             <View style={styles.sectionBody}>
-              <TouchableOpacity style={[styles.secondaryBtn, { backgroundColor: colors.inputBg }]} onPress={async () => Alert.alert('Em breve', 'Export será implementado.')}>
+              <TouchableOpacity style={[styles.secondaryBtn, { backgroundColor: colors.inputBg }]} onPress={async () => {
+                if (!user) return;
+                setLoading(true);
+                try {
+                  await exportBackup(user.uid);
+                  Alert.alert('Sucesso', 'Backup exportado!');
+                } catch (e: any) {
+                  Alert.alert('Erro', e.message);
+                }
+                setLoading(false);
+              }}>
                 <Text style={[styles.secondaryBtnText, { color: colors.text }]}>Exportar Backup</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.secondaryBtn, { backgroundColor: colors.successBg, marginTop: 10 }]} onPress={async () => Alert.alert('Em breve', 'Import será implementado.')}>
+              <TouchableOpacity style={[styles.secondaryBtn, { backgroundColor: colors.successBg, marginTop: 10 }]} onPress={async () => {
+                if (!user) return;
+                setLoading(true);
+                try {
+                  const result = await importBackup(user.uid);
+                  Alert.alert('Sucesso', `${result.routines} fichas, ${result.exercises} exercícios e ${result.logs} séries importados.`);
+                } catch (e: any) {
+                  if (e.message !== 'Importação cancelada') {
+                    Alert.alert('Erro', e.message);
+                  }
+                }
+                setLoading(false);
+              }}>
                 <Text style={[styles.secondaryBtnText, { color: colors.success }]}>Importar Backup</Text>
               </TouchableOpacity>
               <View style={[styles.divider, { backgroundColor: colors.cardBorder }]} />
@@ -411,7 +484,7 @@ export default function SettingsScreen() {
                 <Text style={[styles.dangerBtnText, { color: colors.success }]}>Apagar Registros</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.dangerBtn, { backgroundColor: colors.danger, marginTop: 10 }]} onPress={() => handleDeleteAll()}>
-                <Text style={styles.dangerBtnText}>Apagar Tudo</Text>
+                <Text style={[styles.dangerBtnText, { color: '#FFF' }]}>Apagar Tudo</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -424,43 +497,64 @@ export default function SettingsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#121212' },
+  container: { flex: 1 },
   header: { padding: 20, paddingBottom: 12 },
-  headerTitle: { fontSize: 32, fontWeight: '700', color: '#FFFFFF' },
-  profileCard: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, marginBottom: 16, backgroundColor: '#1E1E1E', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#2A2A2A' },
-  profileIcon: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#2A1A1A', alignItems: 'center', justifyContent: 'center', marginRight: 14 },
+  headerTitle: { fontSize: 32, fontWeight: '700' },
+  profileCard: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, marginBottom: 16, borderRadius: 16, padding: 16, borderWidth: 1 },
+  profileIcon: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', marginRight: 14 },
   profileInfo: { flex: 1 },
-  emailText: { fontSize: 16, fontWeight: '600', color: '#FFF', marginBottom: 4 },
+  emailText: { fontSize: 16, fontWeight: '600', marginBottom: 4 },
   profileMeta: { flexDirection: 'row', gap: 12 },
-  metaText: { fontSize: 13, color: '#888' },
-  section: { marginHorizontal: 16, marginBottom: 12, backgroundColor: '#1E1E1E', borderRadius: 16, borderWidth: 1, borderColor: '#2A2A2A', overflow: 'hidden' },
+  metaText: { fontSize: 13 },
+  section: { marginHorizontal: 16, marginBottom: 12, borderRadius: 16, borderWidth: 1, overflow: 'hidden' },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', padding: 16, gap: 12 },
-  sectionTitle: { fontSize: 17, fontWeight: '700', color: '#FFF' },
+  sectionTitle: { fontSize: 17, fontWeight: '700' },
   sectionBody: { padding: 16, paddingTop: 0 },
-  label: { fontSize: 14, color: '#888', marginTop: 14, marginBottom: 6 },
-  input: { backgroundColor: '#2C2C2C', color: '#FFF', padding: 14, borderRadius: 12, fontSize: 16, borderWidth: 1, borderColor: '#3A3A3A' },
-  pickerWrapper: { backgroundColor: '#2C2C2C', borderRadius: 12, borderWidth: 1, borderColor: '#3A3A3A', overflow: 'hidden' },
-  picker: { color: '#FFF', height: Platform.OS === 'ios' ? 120 : 50 },
+  label: { fontSize: 14, marginTop: 14, marginBottom: 6 },
+  input: { padding: 14, borderRadius: 12, fontSize: 16, borderWidth: 1 },
+  pickerWrapper: { borderRadius: 12, borderWidth: 1, overflow: 'hidden' },
+  picker: { height: Platform.OS === 'ios' ? 120 : 50 },
   switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8 },
-  switchLabel: { color: '#FFF', fontSize: 15, fontWeight: '500' },
-  switchHint: { color: '#666', fontSize: 12, marginTop: 2 },
-  divider: { height: 1, backgroundColor: '#2A2A2A', marginVertical: 12 },
+  switchLabel: { fontSize: 15, fontWeight: '500' },
+  switchHint: { fontSize: 12, marginTop: 2 },
+  divider: { height: 1, marginVertical: 12 },
   avatarRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 },
-  avatarBtn: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#2C2C2C', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'transparent' },
-  avatarSelected: { borderColor: '#EF4444' },
-  dateBtn: { backgroundColor: '#2C2C2C', padding: 14, borderRadius: 12, borderWidth: 1, borderColor: '#3A3A3A' },
-  dateText: { color: '#FFF', fontSize: 16 },
-  primaryBtn: { backgroundColor: '#EF4444', padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 20 },
-  primaryBtnText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
-  secondaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#2C2C2C', padding: 14, borderRadius: 12, gap: 8 },
-  secondaryBtnText: { color: '#FFF', fontSize: 15, fontWeight: '600' },
-  dangerBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#EF4444', padding: 14, borderRadius: 12, marginTop: 12, gap: 8 },
-  dangerBtnText: { color: '#FFF', fontSize: 15, fontWeight: '700' },
+  avatarBtn: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'transparent' },
+  dateBtn: { padding: 14, borderRadius: 12, borderWidth: 1 },
+  dateText: { fontSize: 16 },
+  primaryBtn: { padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 20 },
+  primaryBtnText: { fontSize: 16, fontWeight: '700' },
+  secondaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 14, borderRadius: 12, gap: 8 },
+  secondaryBtnText: { fontSize: 15, fontWeight: '600' },
+  dangerBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 14, borderRadius: 12, marginTop: 12, gap: 8 },
+  dangerBtnText: { fontSize: 15, fontWeight: '700' },
   modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.7)' },
-  modalContent: { backgroundColor: '#2A2A2A', borderRadius: 16, padding: 24, width: '85%' },
-  modalTitle: { fontSize: 22, fontWeight: '700', color: '#FFF', marginBottom: 20 },
+  modalContent: { borderRadius: 16, padding: 24, width: '85%' },
+  modalTitle: { fontSize: 22, fontWeight: '700', marginBottom: 20 },
   modalButtons: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 },
-  cancelText: { color: '#EF4444', fontSize: 16, fontWeight: '600' },
-  saveBtn: { backgroundColor: '#EF4444', paddingVertical: 12, paddingHorizontal: 20, borderRadius: 12 },
-  saveBtnText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
+  cancelText: { fontSize: 16, fontWeight: '600' },
+  saveBtn: { paddingVertical: 12, paddingHorizontal: 20, borderRadius: 12 },
+  saveBtnText: { fontSize: 16, fontWeight: '700' },
+  ecoItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    gap: 12,
+  },
+  ecoIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ecoName: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  ecoDesc: {
+    fontSize: 12,
+    marginTop: 2,
+  },
 });

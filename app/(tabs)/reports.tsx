@@ -1,12 +1,12 @@
 import { FontAwesome } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { User, onAuthStateChanged } from 'firebase/auth';
+import { useAuth } from '../../context/AuthContext';
 import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import AuthForm from '../../components/AuthForm';
-import { appId, auth, db } from '../../firebaseConfig';
+import { appId, db } from '../../firebaseConfig';
 import { useTheme } from '../../context/ThemeContext';
 
 interface Routine { id: string; name: string; order: number; }
@@ -15,16 +15,9 @@ const ROUTINE_ICONS = ['heartbeat', 'fire', 'star', 'bolt', 'trophy', 'heart', '
 export default function ReportsScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const [user, setUser] = useState<User | null>(auth.currentUser);
+  const { user } = useAuth();
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-    });
-    return () => unsubscribeAuth();
-  }, []);
 
   useEffect(() => {
     if (!user) { setRoutines([]); return; }
@@ -61,12 +54,12 @@ export default function ReportsScreen() {
               <View style={[styles.cardIcon, { backgroundColor: colors.primaryBg }]}>
                 <FontAwesome name={ROUTINE_ICONS[index % ROUTINE_ICONS.length] as any} size={20} color={colors.primary} />
               </View>
-              <Text style={styles.cardName}>{item.name}</Text>
-              <FontAwesome name="angle-right" size={18} color="#555" />
+              <Text style={[styles.cardName, { color: colors.text }]}>{item.name}</Text>
+              <FontAwesome name="angle-right" size={18} color={colors.textMuted} />
             </Pressable>
           )}
           contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 16 }]}
-          ListEmptyComponent={<Text style={styles.emptyText}>Nenhuma ficha encontrada.</Text>}
+          ListEmptyComponent={<Text style={[styles.emptyText, { color: colors.textSecondary }]}>Nenhuma ficha encontrada.</Text>}
         />
       )}
     </SafeAreaView>
@@ -74,13 +67,13 @@ export default function ReportsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#121212' },
+  container: { flex: 1 },
   header: { padding: 20, paddingBottom: 12 },
-  headerTitle: { fontSize: 32, fontWeight: '700', color: '#FFFFFF' },
-  headerSubtitle: { fontSize: 15, color: '#888' },
+  headerTitle: { fontSize: 32, fontWeight: '700' },
+  headerSubtitle: { fontSize: 15 },
   listContent: { padding: 16, gap: 10 },
-  card: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1E1E1E', padding: 16, borderRadius: 14, borderWidth: 1, borderColor: '#2A2A2A' },
-  cardIcon: { width: 44, height: 44, borderRadius: 12, backgroundColor: '#2A1A1A', alignItems: 'center', justifyContent: 'center', marginRight: 14 },
-  cardName: { flex: 1, fontSize: 17, fontWeight: '600', color: '#FFFFFF' },
-  emptyText: { color: '#888', textAlign: 'center', marginTop: 50, fontSize: 16 },
+  card: { flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 14, borderWidth: 1 },
+  cardIcon: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginRight: 14 },
+  cardName: { flex: 1, fontSize: 17, fontWeight: '600' },
+  emptyText: { textAlign: 'center', marginTop: 50, fontSize: 16 },
 });

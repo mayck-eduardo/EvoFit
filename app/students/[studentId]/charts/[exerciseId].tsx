@@ -1,6 +1,4 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Stack, useLocalSearchParams } from 'expo-router';
-import { useAuth } from '../../context/AuthContext';
 import { collection, getDocs, orderBy, query } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import {
@@ -13,9 +11,8 @@ import {
 } from 'react-native';
 import { LineChart } from 'react-native-gifted-charts';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { appId, db } from '../../firebaseConfig';
-import { calculateEpley1RM } from '../../utils/formulas';
-import { useTheme } from '../../context/ThemeContext';
+import { appId, db } from '../../../../firebaseConfig';
+import { useTheme } from '../../../../context/ThemeContext';
 
 interface Log {
   id: string;
@@ -30,7 +27,7 @@ interface ChartData {
   dataPointText: string;
 }
 
-const groupLogsByDay = (logs: Log[], unit: string): ChartData[] => {
+const groupLogsByDay = (logs: Log[]): ChartData[] => {
   const groups: { [key: string]: number } = {};
   logs.forEach((log) => {
     const date = new Date(log.createdAt.seconds * 1000);
@@ -45,21 +42,17 @@ const groupLogsByDay = (logs: Log[], unit: string): ChartData[] => {
   }));
 };
 
-export default function ChartScreen() {
+export default function StudentChartScreen() {
   const { colors } = useTheme();
   const params = useLocalSearchParams();
-  const { exerciseId, exerciseName, routineId } = params;
+  const { studentId, exerciseId, exerciseName, routineId } = params;
 
-  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [chartData, setChartData] = useState<ChartData[]>([]);
-  const [weightUnit, setWeightUnit] = useState('kg');
   const [maxValue, setMaxValue] = useState(0);
 
-
-
   useEffect(() => {
-    if (!user || !routineId || !exerciseId) {
+    if (!studentId || !routineId || !exerciseId) {
       setLoading(false);
       return;
     }
@@ -72,7 +65,7 @@ export default function ChartScreen() {
           'artifacts',
           appId,
           'users',
-          user.uid,
+          studentId as string,
           'routines',
           routineId as string,
           'exercises',
@@ -83,7 +76,7 @@ export default function ChartScreen() {
         const snapshot = await getDocs(q);
         const logsData = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }) as Log);
 
-        const formattedData = groupLogsByDay(logsData, weightUnit);
+        const formattedData = groupLogsByDay(logsData);
         setChartData(formattedData);
         if (formattedData.length > 0) {
           setMaxValue(Math.max(...formattedData.map((d) => d.value)));
@@ -97,7 +90,7 @@ export default function ChartScreen() {
     };
 
     fetchLogs();
-  }, [user, routineId, exerciseId, weightUnit]);
+  }, [studentId, routineId, exerciseId]);
 
   if (loading) {
     return (
@@ -126,7 +119,7 @@ export default function ChartScreen() {
           <View style={[styles.chartContainer, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
             <View style={[styles.chartBadge, { backgroundColor: colors.primaryBg }]}>
               <Text style={[styles.chartBadgeText, { color: colors.primary }]}>
-                Recorde: {maxValue} {weightUnit}
+                Recorde: {maxValue} kg
               </Text>
             </View>
             <LineChart

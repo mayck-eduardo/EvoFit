@@ -5,10 +5,12 @@ import React, { useState, useCallback } from 'react';
 import { Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../context/ThemeContext';
+import { useAuth } from '../../context/AuthContext';
 
 export default function TabLayout() {
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
+  const { isPersonal } = useAuth();
   const [showReports, setShowReports] = useState(true);
 
   useFocusEffect(
@@ -26,7 +28,7 @@ export default function TabLayout() {
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: isDark ? '#666' : '#999',
+        tabBarInactiveTintColor: colors.textMuted,
         tabBarStyle: {
           backgroundColor: colors.tabBarBg,
           borderTopColor: colors.tabBarBorder,
@@ -79,6 +81,16 @@ export default function TabLayout() {
           title: 'Calendário',
           tabBarIcon: ({ color, size }) => (
             <FontAwesome name="calendar" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="students"
+        options={{
+          title: 'Alunos',
+          href: isPersonal ? '/students' : null,
+          tabBarIcon: ({ color, size }) => (
+            <FontAwesome name="users" size={size} color={color} />
           ),
         }}
       />

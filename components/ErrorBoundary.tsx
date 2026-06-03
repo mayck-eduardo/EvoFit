@@ -22,9 +22,7 @@ export default class ErrorBoundary extends React.Component<React.PropsWithChildr
     console.error("ErrorBoundary pegou um erro:", error, errorInfo);
   }
 
-  // 2. AQUI ESTÁ A CORREÇÃO:
   handleReload = () => {
-    // Mudado de Updates.reloadAsync() para Updates.reload()
     Updates.reloadAsync();
   };
 

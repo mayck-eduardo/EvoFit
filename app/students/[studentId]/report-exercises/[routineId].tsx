@@ -1,44 +1,42 @@
 import { FontAwesome } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, router } from 'expo-router';
-import { useAuth } from '../../context/AuthContext';
 import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import AuthForm from '../../components/AuthForm';
-import { appId, db } from '../../firebaseConfig';
-import { useTheme } from '../../context/ThemeContext';
+import { appId, db } from '../../../../firebaseConfig';
+import { useTheme } from '../../../../context/ThemeContext';
 
 interface Exercise { id: string; name: string; order: number; }
 
 const EXERCISE_ICONS = ['heartbeat', 'flag', 'star', 'fire', 'trophy', 'bolt', 'heart', 'medkit'];
 
-export default function ReportExercisesScreen() {
+export default function StudentReportExercisesScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const { user } = useAuth();
+  const params = useLocalSearchParams();
+  const { studentId, routineId, routineName } = params;
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [loading, setLoading] = useState(true);
-  const params = useLocalSearchParams();
-  const { routineId, routineName } = params;
 
   useEffect(() => {
-    if (!user || !routineId) { setExercises([]); return; }
+    if (!studentId || !routineId) { setExercises([]); return; }
     setLoading(true);
-    const exercisesCollection = collection(db, 'artifacts', appId, 'users', user.uid, 'routines', routineId as string, 'exercises');
+    const exercisesCollection = collection(db, 'artifacts', appId, 'users', studentId as string, 'routines', routineId as string, 'exercises');
     const q = query(exercisesCollection, orderBy('order', 'asc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setExercises(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }) as Exercise));
       setLoading(false);
     }, (error) => { console.error(error); setLoading(false); });
     return () => unsubscribe();
-  }, [user, routineId]);
+  }, [studentId, routineId]);
 
   const handleSelectExercise = (exercise: Exercise) => {
-    router.push({ pathname: `/charts/${exercise.id}` as any, params: { exerciseName: exercise.name, routineId } });
+    router.push({
+      pathname: `/students/${studentId}/charts/${exercise.id}` as any,
+      params: { exerciseName: exercise.name, routineId, studentId },
+    });
   };
-
-  if (!user) return <View style={[styles.container, { backgroundColor: colors.background }]}><AuthForm /></View>;
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
@@ -48,7 +46,11 @@ export default function ReportExercisesScreen() {
         keyExtractor={(item) => item.id}
         renderItem={({ item, index }) => (
           <Pressable
-            style={({ pressed }) => [styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }, pressed && { opacity: 0.8 }]}
+            style={({ pressed }) => [
+              styles.card,
+              { backgroundColor: colors.card, borderColor: colors.cardBorder },
+              pressed && { opacity: 0.8 },
+            ]}
             onPress={() => handleSelectExercise(item)}
           >
             <View style={[styles.cardIcon, { backgroundColor: colors.primaryBg }]}>
@@ -59,7 +61,15 @@ export default function ReportExercisesScreen() {
           </Pressable>
         )}
         contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 16 }]}
-        ListEmptyComponent={<Text style={[styles.emptyText, { color: colors.textSecondary }]}>Nenhum exercício nesta ficha.</Text>}
+        ListEmptyComponent={
+          loading ? (
+            <View style={styles.emptyState}>
+              <Text style={[styles.emptyText, { color: colors.textSecondary }]}>Carregando...</Text>
+            </View>
+          ) : (
+            <Text style={[styles.emptyText, { color: colors.textSecondary }]}>Nenhum exercício nesta ficha.</Text>
+          )
+        }
       />
     </SafeAreaView>
   );
@@ -71,5 +81,6 @@ const styles = StyleSheet.create({
   card: { flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 14, borderWidth: 1 },
   cardIcon: { width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginRight: 14 },
   cardText: { flex: 1, fontSize: 16, fontWeight: '600' },
+  emptyState: { alignItems: 'center', marginTop: 50 },
   emptyText: { textAlign: 'center', marginTop: 50, fontSize: 16 },
 });

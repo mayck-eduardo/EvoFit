@@ -1,7 +1,7 @@
 import { FontAwesome } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useIsFocused } from '@react-navigation/native';
-import { onAuthStateChanged, User } from 'firebase/auth';
+import { useAuth } from '../../context/AuthContext';
 import {
   collection,
   deleteField,
@@ -24,7 +24,7 @@ import {
 import { Calendar, DateData, LocaleConfig } from 'react-native-calendars';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AuthForm from '../../components/AuthForm';
-import { appId, auth, db } from '../../firebaseConfig';
+import { appId, db } from '../../firebaseConfig';
 import { useTheme } from '../../context/ThemeContext';
 
 LocaleConfig.locales['br'] = {
@@ -46,7 +46,7 @@ const formatDateDisplay = (d: string) => { const [y, m, day] = d.split('-'); ret
 
 export default function CalendarScreen() {
   const { colors, isDark } = useTheme();
-  const [user, setUser] = useState<User | null>(auth.currentUser);
+  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [markedDates, setMarkedDates] = useState<MarkedDates>({});
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
@@ -57,13 +57,6 @@ export default function CalendarScreen() {
   const [workoutDays, setWorkoutDays] = useState<number>(0);
   const [currentStreak, setCurrentStreak] = useState<number>(0);
   const isFocused = useIsFocused();
-
-  useEffect(() => {
-    const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-    });
-    return () => unsubscribeAuth();
-  }, []);
 
   useEffect(() => {
     if (user && isFocused) fetchWorkoutDates();
@@ -107,7 +100,7 @@ export default function CalendarScreen() {
 
       const newMarked: MarkedDates = {};
       sorted.forEach((date) => {
-        newMarked[date] = { selected: false, marked: true, dotColor: '#EF4444', selectedColor: '#3A3A3A' };
+        newMarked[date] = { selected: false, marked: true, dotColor: colors.primary, selectedColor: colors.inputBorder };
       });
       setMarkedDates(newMarked);
     } catch (e) {
@@ -220,8 +213,8 @@ export default function CalendarScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
       <Modal animationType="slide" transparent visible={detailsModalVisible} onRequestClose={() => setDetailsModalVisible(false)}>
         <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.7)' }]}>
-          <View style={[styles.modalContent, { backgroundColor: colors.surfaceAlt }]}>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>{selectedDay ? formatDateDisplay(selectedDay) : 'Detalhes'}</Text>
+            <View style={[styles.modalContent, { backgroundColor: colors.surfaceAlt }]}>
+            <Text style={[styles.modalTitle, { color: colors.text, borderBottomColor: colors.inputBorder }]}>{selectedDay ? formatDateDisplay(selectedDay) : 'Detalhes'}</Text>
             {loadingDetails ? (
               <ActivityIndicator size="large" color={colors.primary} style={{ margin: 20 }} />
             ) : (
@@ -241,7 +234,7 @@ export default function CalendarScreen() {
                 ListEmptyComponent={<Text style={[styles.emptyText, { color: colors.textSecondary }]}>Nenhum exercício encontrado.</Text>}
               />
             )}
-            <View style={styles.modalActions}>
+            <View style={[styles.modalActions, { borderTopColor: colors.inputBorder }]}>
               <TouchableOpacity onPress={() => setDetailsModalVisible(false)}>
                 <Text style={[styles.closeText, { color: colors.textSecondary }]}>Fechar</Text>
               </TouchableOpacity>
@@ -297,34 +290,34 @@ export default function CalendarScreen() {
         />
       </View>
 
-      <View style={styles.legend}>
-        <View style={[styles.dot, { backgroundColor: '#EF4444' }]} />
-        <Text style={styles.legendText}>Dia com treino concluído</Text>
+      <View style={[styles.legend, { backgroundColor: colors.card }]}>
+        <View style={[styles.dot, { backgroundColor: colors.primary }]} />
+        <Text style={[styles.legendText, { color: colors.text }]}>Dia com treino concluído</Text>
       </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#121212' },
+  container: { flex: 1 },
   header: { padding: 20, paddingBottom: 8 },
-  headerTitle: { fontSize: 32, fontWeight: '700', color: '#FFFFFF' },
+  headerTitle: { fontSize: 32, fontWeight: '700' },
   statsRow: { flexDirection: 'row', paddingHorizontal: 20, gap: 12, marginBottom: 12 },
-  statCard: { flex: 1, backgroundColor: '#1E1E1E', borderRadius: 14, padding: 16, borderWidth: 1, borderColor: '#2A2A2A', alignItems: 'center' },
-  statValue: { fontSize: 28, fontWeight: '700', color: '#EF4444' },
-  statLabel: { fontSize: 12, color: '#888', marginTop: 4 },
-  calendarWrapper: { marginHorizontal: 15, borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: '#2A2A2A' },
-  legend: { flexDirection: 'row', alignItems: 'center', marginTop: 16, marginHorizontal: 20, padding: 12, backgroundColor: '#1E1E1E', borderRadius: 10 },
+  statCard: { flex: 1, borderRadius: 14, padding: 16, borderWidth: 1, alignItems: 'center' },
+  statValue: { fontSize: 28, fontWeight: '700' },
+  statLabel: { fontSize: 12, marginTop: 4 },
+  calendarWrapper: { marginHorizontal: 15, borderRadius: 16, overflow: 'hidden', borderWidth: 1 },
+  legend: { flexDirection: 'row', alignItems: 'center', marginTop: 16, marginHorizontal: 20, padding: 12, borderRadius: 10 },
   dot: { width: 10, height: 10, borderRadius: 5, marginRight: 10 },
-  legendText: { color: '#FFF', fontSize: 13 },
-  emptyText: { color: '#888', textAlign: 'center', marginTop: 10, fontSize: 14 },
+  legendText: { fontSize: 13 },
+  emptyText: { textAlign: 'center', marginTop: 10, fontSize: 14 },
   modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.7)' },
-  modalContent: { backgroundColor: '#2A2A2A', borderRadius: 16, padding: 20, width: '85%', maxHeight: '60%' },
-  modalTitle: { fontSize: 20, fontWeight: '700', color: '#FFF', marginBottom: 16, textAlign: 'center', borderBottomWidth: 1, borderBottomColor: '#3A3A3A', paddingBottom: 12 },
+  modalContent: { borderRadius: 16, padding: 20, width: '85%', maxHeight: '60%' },
+  modalTitle: { fontSize: 20, fontWeight: '700', marginBottom: 16, textAlign: 'center', borderBottomWidth: 1, paddingBottom: 12 },
   historyItem: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
-  historyDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#EF4444', marginRight: 14 },
-  historyExercise: { color: '#FFF', fontSize: 15, fontWeight: '600' },
-  historyRoutine: { color: '#888', fontSize: 12 },
-  modalActions: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 16, borderTopWidth: 1, borderTopColor: '#3A3A3A', paddingTop: 14 },
-  closeText: { color: '#EF4444', fontSize: 16, fontWeight: '600' },
+  historyDot: { width: 8, height: 8, borderRadius: 4, marginRight: 14 },
+  historyExercise: { fontSize: 15, fontWeight: '600' },
+  historyRoutine: { fontSize: 12 },
+  modalActions: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 16, borderTopWidth: 1, paddingTop: 14 },
+  closeText: { fontSize: 16, fontWeight: '600' },
 });
