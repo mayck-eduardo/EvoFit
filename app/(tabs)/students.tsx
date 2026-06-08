@@ -7,8 +7,10 @@ import {
   getDoc,
   getDocs,
   query,
+  setDoc,
   where,
 } from 'firebase/firestore';
+import { Picker } from '@react-native-picker/picker';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -26,7 +28,7 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { appId, db } from '../../firebaseConfig';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth, UserRole } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 
 interface StudentProfile {
@@ -38,12 +40,17 @@ interface StudentProfile {
 export default function StudentsScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const { profile, user, isPersonal, updateProfile, refreshProfile } = useAuth();
+  const { profile, user, isPersonal, isAdmin, updateProfile, refreshProfile } = useAuth();
   const [students, setStudents] = useState<StudentProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
   const [studentEmail, setStudentEmail] = useState('');
   const [addingStudent, setAddingStudent] = useState(false);
+  const [adminModalVisible, setAdminModalVisible] = useState(false);
+  const [adminSearchEmail, setAdminSearchEmail] = useState('');
+  const [adminUser, setAdminUser] = useState<{ uid: string; email: string; role?: string } | null>(null);
+  const [adminNewRole, setAdminNewRole] = useState<UserRole>('student');
+  const [adminLoading, setAdminLoading] = useState(false);
 
   useEffect(() => {
     if (profile?.students && profile.students.length > 0) {
@@ -94,6 +101,14 @@ export default function StudentsScreen() {
         return;
       }
       const studentId = snapshot.docs[0].id;
+      const studentData = snapshot.docs[0].data();
+
+      if (studentData.personalId && studentData.personalId !== user?.uid) {
+        Alert.alert('Aluno já vinculado', 'Este aluno já possui um personal trainer.');
+        setAddingStudent(false);
+        return;
+      }
+
       const currentStudents = profile?.students || [];
       if (currentStudents.includes(studentId)) {
         Alert.alert('Aviso', 'Este aluno já está na sua lista.');
@@ -101,6 +116,7 @@ export default function StudentsScreen() {
         return;
       }
       await updateProfile({ students: [...currentStudents, studentId] });
+      await setDoc(doc(db, 'artifacts', appId, 'users', studentId), { personalId: user?.uid }, { merge: true });
       await refreshProfile();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setModalVisible(false);
@@ -131,6 +147,43 @@ export default function StudentsScreen() {
         },
       },
     ]);
+  };
+
+  const handleAdminSearch = async () => {
+    if (!adminSearchEmail.trim()) return;
+    setAdminLoading(true);
+    setAdminUser(null);
+    try {
+      const usersRef = collection(db, 'artifacts', appId, 'users');
+      const q = query(usersRef, where('email', '==', adminSearchEmail.trim()));
+      const snapshot = await getDocs(q);
+      if (snapshot.empty) {
+        Alert.alert('Erro', 'Usuário não encontrado.');
+      } else {
+        const data = snapshot.docs[0].data();
+        setAdminUser({ uid: snapshot.docs[0].id, email: data.email, role: data.role });
+        setAdminNewRole(data.role || 'student');
+      }
+    } catch (e) {
+      console.error(e);
+      Alert.alert('Erro', 'Falha ao buscar usuário.');
+    }
+    setAdminLoading(false);
+  };
+
+  const handleAdminUpdateRole = async () => {
+    if (!adminUser) return;
+    setAdminLoading(true);
+    try {
+      await setDoc(doc(db, 'artifacts', appId, 'users', adminUser.uid), { role: adminNewRole }, { merge: true });
+      setAdminUser({ ...adminUser, role: adminNewRole });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert('Sucesso', `Role de ${adminUser.email} alterado para ${adminNewRole}.`);
+    } catch (e) {
+      console.error(e);
+      Alert.alert('Erro', 'Falha ao atualizar role.');
+    }
+    setAdminLoading(false);
   };
 
   if (!user || !isPersonal) {
@@ -183,9 +236,61 @@ export default function StudentsScreen() {
         </KeyboardAvoidingView>
       </Modal>
 
+      {isAdmin && (
+        <Modal animationType="slide" transparent visible={adminModalVisible} onRequestClose={() => setAdminModalVisible(false)}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.7)' }]}>
+            <View style={[styles.modalContent, { backgroundColor: colors.surfaceAlt }]}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Admin — Gerenciar Usuário</Text>
+              <TextInput
+                style={[styles.modalInput, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
+                placeholder="Email do usuário"
+                placeholderTextColor={colors.textMuted}
+                value={adminSearchEmail}
+                onChangeText={setAdminSearchEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+              />
+              <TouchableOpacity style={[styles.saveBtn, { backgroundColor: colors.primary, alignSelf: 'flex-end', marginBottom: 16 }]} onPress={handleAdminSearch} disabled={adminLoading}>
+                {adminLoading ? <ActivityIndicator color="#FFF" /> : <Text style={[styles.saveBtnText, { color: '#FFF' }]}>Buscar</Text>}
+              </TouchableOpacity>
+
+              {adminUser && (
+                <View>
+                  <Text style={[styles.label, { color: colors.text }]}>Email: {adminUser.email}</Text>
+                  <Text style={[styles.label, { color: colors.textSecondary, marginTop: 12 }]}>Nova Role</Text>
+                  <View style={[styles.pickerWrapper, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder }]}>
+                    <Picker selectedValue={adminNewRole} onValueChange={(v) => setAdminNewRole(v)} style={[styles.picker, { color: colors.text }]} dropdownIconColor={colors.primary} mode="dropdown" itemStyle={{ color: '#1F2937', backgroundColor: '#FFFFFF' }}>
+                      <Picker.Item label="Aluno" value="student" color="#1F2937" />
+                      <Picker.Item label="Personal Trainer" value="personal" color="#1F2937" />
+                      <Picker.Item label="Ambos" value="both" color="#1F2937" />
+                      <Picker.Item label="Admin" value="admin" color="#1F2937" />
+                    </Picker>
+                  </View>
+                  <TouchableOpacity style={[styles.saveBtn, { backgroundColor: colors.primary, alignSelf: 'flex-end', marginTop: 12 }]} onPress={handleAdminUpdateRole} disabled={adminLoading}>
+                    <Text style={[styles.saveBtnText, { color: '#FFF' }]}>Salvar Role</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              <Pressable onPress={() => { setAdminModalVisible(false); setAdminUser(null); setAdminSearchEmail(''); }} style={{ alignSelf: 'center', marginTop: 16 }}>
+                <Text style={[styles.cancelText, { color: colors.primary }]}>Fechar</Text>
+              </Pressable>
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
+      )}
+
       <View style={styles.header}>
         <Text style={[styles.headerTitle, { color: colors.text }]}>Alunos</Text>
-        <Text style={[styles.headerSubtitle, { color: colors.textSecondary }]}>Gerencie seus alunos</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <Text style={[styles.headerSubtitle, { color: colors.textSecondary }]}>Gerencie seus alunos</Text>
+          {isAdmin && (
+            <TouchableOpacity onPress={() => setAdminModalVisible(true)} style={[styles.adminBadge, { backgroundColor: colors.primaryBg }]}>
+              <FontAwesome name="shield" size={16} color={colors.primary} />
+              <Text style={[styles.adminBadgeText, { color: colors.primary }]}>Admin</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       <FlatList
@@ -296,4 +401,9 @@ const styles = StyleSheet.create({
   cancelText: { fontSize: 16, fontWeight: '600' },
   saveBtn: { paddingVertical: 12, paddingHorizontal: 24, borderRadius: 12 },
   saveBtnText: { fontSize: 16, fontWeight: '700' },
+  adminBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 4, paddingHorizontal: 10, borderRadius: 8 },
+  adminBadgeText: { fontSize: 13, fontWeight: '700' },
+  label: { fontSize: 14, marginBottom: 4 },
+  pickerWrapper: { borderRadius: 12, borderWidth: 1, overflow: 'hidden', marginBottom: 8 },
+  picker: { height: 50 },
 });

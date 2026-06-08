@@ -1,3 +1,4 @@
+import * as Haptics from 'expo-haptics';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -22,7 +23,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { Picker } from '@react-native-picker/picker';
 import { EmailAuthProvider, reauthenticateWithCredential, signOut, updatePassword } from 'firebase/auth';
 import { useAuth } from '../../context/AuthContext';
-import { addDoc, collection, doc, getDoc, getDocs, serverTimestamp, setDoc } from 'firebase/firestore';
+import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, serverTimestamp, setDoc, writeBatch } from 'firebase/firestore';
 import AuthForm from '../../components/AuthForm';
 import { appId, auth, db } from '../../firebaseConfig';
 import { useTheme } from '../../context/ThemeContext';
@@ -37,7 +38,7 @@ const AVATARS = ['user', 'user-circle', 'user-md', 'rocket', 'music', 'gamepad',
 export default function SettingsScreen() {
   const { colors, isDark, themeMode, setThemeMode } = useTheme();
   const insets = useSafeAreaInsets();
-  const { user, loading: initLoading, refreshProfile } = useAuth();
+  const { user, loading: initLoading, refreshProfile, role: currentRole, isAdmin } = useAuth();
   const [loading, setLoading] = useState(false);
   const [timerInput, setTimerInput] = useState('90');
   const [completionMode, setCompletionMode] = useState<'any' | 'full'>('any');
@@ -172,9 +173,37 @@ export default function SettingsScreen() {
   const handleLogout = () => signOut(auth);
 
   const handleDeleteAll = () => {
-    Alert.alert('Apagar tudo', 'Isso é irreversível!', [
+    Alert.alert('Apagar tudo', 'Isso apagará TODAS as fichas, exercícios e registros. Irreversível!', [
       { text: 'Cancelar', style: 'cancel' },
-      { text: 'Apagar tudo', style: 'destructive', onPress: () => {} },
+      {
+        text: 'Apagar tudo',
+        style: 'destructive',
+        onPress: async () => {
+          if (!user) return;
+          setLoading(true);
+          try {
+            const routinesSnap = await getDocs(collection(db, 'artifacts', appId, 'users', user.uid, 'routines'));
+            for (const routineDoc of routinesSnap.docs) {
+              const exercisesSnap = await getDocs(collection(routineDoc.ref, 'exercises'));
+              for (const exerciseDoc of exercisesSnap.docs) {
+                const logsSnap = await getDocs(collection(exerciseDoc.ref, 'logs'));
+                const batch = writeBatch(db);
+                logsSnap.forEach((logDoc) => batch.delete(logDoc.ref));
+                await batch.commit();
+              }
+              const exerciseBatch = writeBatch(db);
+              exercisesSnap.forEach((exDoc) => exerciseBatch.delete(exDoc.ref));
+              await exerciseBatch.commit();
+              await deleteDoc(routineDoc.ref);
+            }
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            Alert.alert('Concluído', 'Todos os dados foram apagados.');
+          } catch (e: any) {
+            Alert.alert('Erro', e.message);
+          }
+          setLoading(false);
+        },
+      },
     ]);
   };
 
@@ -310,13 +339,20 @@ export default function SettingsScreen() {
                 </Picker>
               </View>
               <Text style={[styles.label, { color: colors.textSecondary }]}>Tipo de Conta</Text>
-              <View style={[styles.pickerWrapper, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder }]}>
-                <Picker selectedValue={role} onValueChange={(v) => setRole(v)} style={[styles.picker, { color: colors.text }]} dropdownIconColor={colors.primary} mode="dropdown" itemStyle={{ color: '#1F2937', backgroundColor: '#FFFFFF' }}>
-                  <Picker.Item label="Aluno" value="student" color="#1F2937" />
-                  <Picker.Item label="Personal Trainer" value="personal" color="#1F2937" />
-                  <Picker.Item label="Ambos" value="both" color="#1F2937" />
-                </Picker>
-              </View>
+              {isAdmin || currentRole !== 'student' ? (
+                <View style={[styles.pickerWrapper, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder }]}>
+                  <Picker selectedValue={role} onValueChange={(v) => setRole(v)} style={[styles.picker, { color: colors.text }]} dropdownIconColor={colors.primary} mode="dropdown" itemStyle={{ color: '#1F2937', backgroundColor: '#FFFFFF' }}>
+                    <Picker.Item label="Aluno" value="student" color="#1F2937" />
+                    <Picker.Item label="Personal Trainer" value="personal" color="#1F2937" />
+                    <Picker.Item label="Ambos" value="both" color="#1F2937" />
+                    {isAdmin && <Picker.Item label="Admin" value="admin" color="#1F2937" />}
+                  </Picker>
+                </View>
+              ) : (
+                <Text style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.textMuted, textAlign: 'center', padding: 14, borderRadius: 12, fontSize: 16, borderWidth: 1 }]}>
+                  Aluno
+                </Text>
+              )}
               <TouchableOpacity style={[styles.primaryBtn, { backgroundColor: colors.primary }]} onPress={handleSaveProfile} disabled={loading}>
                 {loading ? <ActivityIndicator color="#FFF" /> : <Text style={[styles.primaryBtnText, { color: '#FFF' }]}>Salvar</Text>}
               </TouchableOpacity>

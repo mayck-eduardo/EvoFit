@@ -1,0 +1,77 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return request.auth != null &&
+        exists(/databases/$(database)/documents/artifacts/$(appId)/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/artifacts/$(appId)/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    function isPersonalOf(studentId) {
+      return request.auth != null &&
+        exists(/databases/$(database)/documents/artifacts/$(appId)/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/artifacts/$(appId)/users/$(request.auth.uid)).data.students.hasAny([studentId]);
+    }
+
+    function hasPersonal(userId) {
+      return request.auth != null &&
+        exists(/databases/$(database)/documents/artifacts/$(appId)/users/$(userId)) &&
+        get(/databases/$(database)/documents/artifacts/$(appId)/users/$(userId)).data.personalId == request.auth.uid;
+    }
+
+    function canAccess(userId) {
+      return isAdmin() || isOwner(userId) || isPersonalOf(userId) || hasPersonal(userId);
+    }
+
+    // ─── Users Collection ──────────────────────
+    // Allows any authenticated user to read user docs (for email search).
+    // Write access is restricted to the owner.
+    match /artifacts/{appId}/users/{userId} {
+      allow read: if request.auth != null;
+      allow create, update: if isOwner(userId);
+      allow delete: if false;
+
+      match /routines/{routineId} {
+        allow read: if canAccess(userId);
+        allow create, update: if isOwner(userId);
+        allow delete: if isOwner(userId);
+
+        match /exercises/{exerciseId} {
+          allow read: if canAccess(userId);
+          allow create, update: if isOwner(userId);
+          allow delete: if isOwner(userId);
+
+          match /logs/{logId} {
+            allow read: if canAccess(userId);
+            allow create: if isOwner(userId);
+            allow update, delete: if isOwner(userId);
+          }
+        }
+      }
+
+      match /plans/{planId} {
+        allow read: if canAccess(userId);
+        allow create, update: if isOwner(userId);
+        allow delete: if isOwner(userId);
+
+        match /routines/{prId} {
+          allow read: if canAccess(userId);
+          allow create, update: if isOwner(userId);
+          allow delete: if isOwner(userId);
+        }
+      }
+
+      match /recentActivity/{activityId} {
+        allow read: if canAccess(userId);
+        allow create: if isOwner(userId);
+        allow delete: if isOwner(userId);
+        allow update: if false;
+      }
+    }
+  }
+}

@@ -94,6 +94,9 @@ export default function StudentDetailScreen() {
   const [editingRoutine, setEditingRoutine] = useState<Routine | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [recentActivity, setRecentActivity] = useState<ActivityItem[]>([]);
+  const [assignModalVisible, setAssignModalVisible] = useState(false);
+  const [myRoutines, setMyRoutines] = useState<Routine[]>([]);
+  const [assignLoading, setAssignLoading] = useState(false);
 
   useEffect(() => {
     if (!studentId) {
@@ -186,6 +189,51 @@ export default function StudentDetailScreen() {
     setSaveLoading(false);
   };
 
+  const openAssignModal = async () => {
+    if (!user) return;
+    setAssignModalVisible(true);
+    setAssignLoading(true);
+    try {
+      const myRoutinesSnap = await getDocs(
+        query(collection(db, 'artifacts', appId, 'users', user.uid, 'routines'), orderBy('createdAt', 'asc'))
+      );
+      setMyRoutines(myRoutinesSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as Routine));
+    } catch (e) {
+      console.error('Erro ao carregar suas fichas:', e);
+    }
+    setAssignLoading(false);
+  };
+
+  const handleAssignRoutine = async (routine: Routine) => {
+    if (!user || !studentId) return;
+    setAssignLoading(true);
+    try {
+      const exercisesSnap = await getDocs(
+        query(
+          collection(db, 'artifacts', appId, 'users', user.uid, 'routines', routine.id, 'exercises'),
+          orderBy('createdAt', 'asc')
+        )
+      );
+      const studentRoutineRef = await addDoc(
+        collection(db, 'artifacts', appId, 'users', studentId as string, 'routines'),
+        { name: routine.name, order: Date.now(), createdAt: serverTimestamp() }
+      );
+      for (const exDoc of exercisesSnap.docs) {
+        const exData = exDoc.data();
+        await addDoc(
+          collection(db, 'artifacts', appId, 'users', studentId as string, 'routines', studentRoutineRef.id, 'exercises'),
+          { name: exData.name, sets: exData.sets, order: Date.now(), createdAt: serverTimestamp() }
+        );
+      }
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setAssignModalVisible(false);
+    } catch (e) {
+      console.error('Erro ao atribuir ficha:', e);
+      Alert.alert('Erro', 'Não foi possível atribuir a ficha.');
+    }
+    setAssignLoading(false);
+  };
+
   const handleDeleteRoutine = (routineId: string) => {
     if (!studentId) return;
     Alert.alert('Deletar Ficha', 'Isso apagará a ficha e todos os exercícios e registros.', [
@@ -251,6 +299,40 @@ export default function StudentDetailScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
+      <Modal animationType="slide" transparent visible={assignModalVisible} onRequestClose={() => setAssignModalVisible(false)}>
+        <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.7)' }]}>
+          <View style={[styles.modalContent, { backgroundColor: colors.surfaceAlt }]}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Atribuir Minha Ficha</Text>
+            {assignLoading ? (
+              <ActivityIndicator size="large" color={colors.primary} style={{ marginVertical: 30 }} />
+            ) : myRoutines.length === 0 ? (
+              <Text style={[styles.emptyText, { color: colors.textSecondary, textAlign: 'center', marginVertical: 20 }]}>Você não tem fichas criadas.</Text>
+            ) : (
+              <FlatList
+                data={myRoutines}
+                keyExtractor={(item) => item.id}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={[styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder, marginBottom: 8 }]}
+                    onPress={() => handleAssignRoutine(item)}
+                  >
+                    <View style={[styles.cardIcon, { backgroundColor: colors.primaryBg }]}>
+                      <FontAwesome name="copy" size={18} color={colors.primary} />
+                    </View>
+                    <Text style={[styles.cardName, { color: colors.text, flex: 1 }]}>{item.name}</Text>
+                    <FontAwesome name="angle-right" size={18} color={colors.textMuted} />
+                  </TouchableOpacity>
+                )}
+                style={{ maxHeight: 400 }}
+              />
+            )}
+            <Pressable onPress={() => setAssignModalVisible(false)} style={{ alignSelf: 'center', marginTop: 12 }}>
+              <Text style={[styles.cancelText, { color: colors.primary }]}>Cancelar</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
       <Modal animationType="slide" transparent visible={routineModalVisible} onRequestClose={() => setRoutineModalVisible(false)}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.7)' }]}>
           <View style={[styles.modalContent, { backgroundColor: colors.surfaceAlt }]}>
@@ -418,9 +500,14 @@ export default function StudentDetailScreen() {
         }
       />
 
-      <TouchableOpacity style={[styles.fab, { backgroundColor: colors.primary }]} onPress={openAddModal}>
-        <Text style={[styles.fabText, { color: colors.text }]}>+</Text>
-      </TouchableOpacity>
+      <View style={styles.fabRow}>
+        <TouchableOpacity style={[styles.fabSecondary, { backgroundColor: colors.surface, borderColor: colors.cardBorder }]} onPress={openAssignModal}>
+          <FontAwesome name="copy" size={22} color={colors.primary} />
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.fab, { backgroundColor: colors.primary }]} onPress={openAddModal}>
+          <Text style={[styles.fabText, { color: colors.text }]}>+</Text>
+        </TouchableOpacity>
+      </View>
     </SafeAreaView>
   );
 }
@@ -495,7 +582,14 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 8,
   },
+  fabRow: { position: 'absolute', bottom: 24, right: 24, flexDirection: 'row', alignItems: 'center', gap: 12 },
   fabText: { fontSize: 28, color: '#FFF', fontWeight: '300', lineHeight: 28 },
+  fabSecondary: {
+    width: 50, height: 50, borderRadius: 25,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 5,
+  },
   modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   modalContent: { borderRadius: 16, padding: 24, width: '85%' },
   modalTitle: { fontSize: 22, fontWeight: '700', marginBottom: 20 },

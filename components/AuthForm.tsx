@@ -3,6 +3,7 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword
 } from 'firebase/auth';
+import { doc, setDoc } from 'firebase/firestore';
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
@@ -16,7 +17,7 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
-import { auth } from '../firebaseConfig';
+import { appId, auth, db } from '../firebaseConfig';
 
 export default function AuthForm() {
   const [email, setEmail] = useState('');
@@ -35,9 +36,11 @@ export default function AuthForm() {
       if (isLogin) {
         await signInWithEmailAndPassword(auth, email, password);
       } else {
-        await createUserWithEmailAndPassword(auth, email, password);
+        const cred = await createUserWithEmailAndPassword(auth, email, password);
+        await setDoc(doc(db, 'artifacts', appId, 'users', cred.user.uid), {
+          email: cred.user.email,
+        });
       }
-      // O onAuthStateChanged nas telas pai cuidará do redirecionamento
     } catch (error: any) {
       let msg = error.message;
       if (error.code === 'auth/invalid-credential') msg = 'Email ou senha incorretos.';
